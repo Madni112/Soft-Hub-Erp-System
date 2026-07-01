@@ -74,7 +74,6 @@ const PrintSalesReturn = () => {
 
   return (
     <div className="mx-auto max-w-4xl p-4 md:p-8 bg-white text-black font-sans min-h-screen relative">
-      
       <style>{`
         @media print {
           @page {
@@ -124,7 +123,6 @@ const PrintSalesReturn = () => {
           }
         }
       `}</style>
-
       <div className="no-print flex justify-between items-center mb-6 bg-slate-50 p-4 rounded border border-stroke">
         <button
           onClick={() => navigate('/Sales-Return/Debit-Notes/List')}
@@ -222,12 +220,10 @@ const PrintSalesReturn = () => {
           </div>
         </div>
 
-        {/* COMPLIANT SPACED OUT SIGNATURE LINES GRID BLOCK */}
         <div className="grid grid-cols-2 gap-12 pt-24 text-center text-[11px] font-bold uppercase tracking-wider text-gray-600 mt-auto">
           <div><div className="border-t border-black pt-2">Authorized Signature</div></div>
           <div><div className="border-t border-black pt-2">Customer Acknowledgment</div></div>
         </div>
-
       </div>
     </div>
   );

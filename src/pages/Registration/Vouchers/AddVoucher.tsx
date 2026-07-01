@@ -15,7 +15,6 @@ function AddVoucher() {
   const [accountList, setAccountList] = useState<any[]>([]);
   const [salesmanList, setSalesmanList] = useState<any[]>([]);
 
-  // Safely extract existing voucher data if passed via list navigation state
   const editData = location.state?.voucher;
   const isEditMode = !!editData;
 
@@ -70,12 +69,12 @@ function AddVoucher() {
             voucherNo: editData.voucher_no || '',
             voucherType: editData.voucher_type || '',
             voucherDate: editData.voucher_date || '',
-            notes: editData.notes || '',
+            notes: editData.notes || editData.narration || '',
             items: editData.items || []
           } : {
             voucherNo: `VCH-${Date.now().toString().slice(-6)}`,
             voucherType: '',
-            voucherDate: new Date().toISOString().split('T'),
+            voucherDate: new Date().toISOString().split('T')[0],
             notes: '',
             items: [
               { accountCode: '', salesman: '', description: '', debit: 0, credit: 0 },
@@ -110,7 +109,6 @@ function AddVoucher() {
                 items: values.items
               };
 
-              // FIXED LOGIC ENGINE: Update existing row if in edit mode, otherwise insert a fresh record
               const { error } = isEditMode
                 ? await supabase.from('financial_vouchers').update(databasePayload).eq('id', editData.id)
                 : await supabase.from('financial_vouchers').insert([databasePayload]);
@@ -157,6 +155,7 @@ function AddVoucher() {
                     <input type="date" name="voucherDate" onChange={handleChange} value={values.voucherDate} className="w-full border border-stroke dark:border-strokedark rounded p-2 bg-transparent font-bold text-black dark:text-white" />
                   </div>
                 </div>
+
                 <div className="overflow-x-auto border border-stroke dark:border-strokedark rounded p-4 bg-white dark:bg-boxdark shadow-xs">
                   <table className="w-full table-auto text-center border-collapse min-w-[800px]">
                     <thead>
@@ -227,14 +226,13 @@ function AddVoucher() {
                 </div>
 
                 <div className="flex justify-end gap-4 pt-4 border-t border-stroke dark:border-strokedark">
-                  <button type="button" onClick={() => navigate('/Registration/Vouchers/List')} className="rounded bg-danger py-2.5 px-8 font-medium text-white hover:bg-opacity-90 transition text-xs shadow-sm h-10 min-w-36">
-                    Cancel
-                  </button>
                   <button type="submit" disabled={loading} className="rounded bg-primary py-2.5 px-8 font-medium text-white hover:bg-opacity-90 transition text-xs shadow-sm h-10 min-w-36">
                     {loading ? <Spinner /> : isEditMode ? 'Update Record' : 'Add Record'}
                   </button>
+                  <button type="button" onClick={() => navigate('/Registration/Vouchers/List')} className="rounded bg-danger py-2.5 px-8 font-medium text-white hover:bg-opacity-90 transition text-xs shadow-sm h-10 min-w-36">
+                    Cancel
+                  </button>
                 </div>
-
               </Form>
             );
           }}

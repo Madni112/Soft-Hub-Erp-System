@@ -7,8 +7,8 @@ import { UserRole } from '../constant/auth';
 interface AuthContextType {
   isAuthenticated: boolean;
   role: string | null;
-  loading: boolean; // Added loading state to prevent UI flicker
-  login: (email: string, password: string) => Promise<void>; // Updated signature
+  loading: boolean;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   getRoleBasedRoutes: () => any[];
 }
@@ -18,17 +18,15 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [role, setRole] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(true); // Start as true
+  const [loading, setLoading] = useState<boolean>(true);
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Initial session check
     supabase.auth.getSession().then(({ data: { session } }) => {
       handleAuthState(session);
-      setLoading(false); // Stop loading after check
+      setLoading(false);
     });
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       handleAuthState(session);
       setLoading(false);
@@ -69,7 +67,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <AuthContext.Provider value={{ isAuthenticated, role, loading, login, logout, getRoleBasedRoutes }}>
-      {!loading && children} {/* Only render children when auth check is done */}
+      {!loading && children}
     </AuthContext.Provider>
   );
 };

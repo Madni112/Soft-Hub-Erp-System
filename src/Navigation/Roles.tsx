@@ -1,4 +1,4 @@
-import { MdDashboard, MdReceipt, MdPeople, MdAdminPanelSettings, MdEmojiTransportation, MdEdit, MdInventory2, MdClass, MdAccountBox, MdCategory, MdStraighten, MdDomain, MdInventory, MdBadge, MdShoppingCart, MdLocationOn, MdLocalShipping, MdCompareArrows, MdFormatListBulleted, MdAccountTree, MdReceiptLong } from 'react-icons/md';
+import { MdDashboard, MdReceipt, MdPeople, MdAdminPanelSettings, MdEmojiTransportation, MdEdit, MdInventory2, MdClass, MdAccountBox, MdCategory, MdStraighten, MdDomain, MdInventory, MdBadge, MdShoppingCart, MdLocationOn, MdLocalShipping, MdCompareArrows, MdFormatListBulleted, MdAccountTree, MdReceiptLong, MdAccountBalance } from 'react-icons/md';
 import Dashboard from '../pages/Dashboard/Dashboard';
 import NewInvoice from '../pages/Sales/Invoice/NewInvoice';
 import SalesHistory from '../pages/Sales/Invoice/SalesHistory';
@@ -31,6 +31,13 @@ import ChartOfAccountList from '../pages/Registration/Chart of Account/ChartOfAc
 import AddChartOfAccount from '../pages/Registration/Chart of Account/AddChartOfAccount';
 import VoucherList from '../pages/Registration/Vouchers/VoucherList';
 import AddVoucher from '../pages/Registration/Vouchers/AddVoucher';
+import BankAccountList from '../pages/Registration/Bank Account/BankAccountList';
+import AddBank from '../pages/Registration/Bank Account/AddBankAccount';
+import AddOpeningStock from '../pages/Registration/Opening Stock/AddOpeningStock';
+import OpeningStockList from '../pages/Registration/Opening Stock/OpeningStockList';
+import { Component } from 'react';
+import AddInvoiceReceipt from '../pages/Registration/Invoice Receipt/AddInvoiceReceipt';
+import InvoiceReceiptList from '../pages/Registration/Invoice Receipt/InvoiceReceiptList';
 
 export const adminRoutes = [
   {
@@ -39,7 +46,6 @@ export const adminRoutes = [
     label: 'Dashboard',
     icon: MdDashboard,
   },
-
   {
     label: 'Administation',
     icon: MdAdminPanelSettings,
@@ -55,8 +61,7 @@ export const adminRoutes = [
         component: <UomManager />,
         label: 'UOM',
         icon: MdStraighten
-      }
-      ,
+      },
       {
         path: '/Administration/Brands',
         component: <Brands />,
@@ -69,7 +74,6 @@ export const adminRoutes = [
         path: '/Administration/Products/List',
         component: <ProductList />,
       },
-
       {
         path: '/Administration/Designations/List',
         component: <Designations />,
@@ -108,7 +112,6 @@ export const adminRoutes = [
       }
     ]
   },
-
   {
     label: 'REGISTRATION',
     icon: MdFormatListBulleted,
@@ -124,10 +127,27 @@ export const adminRoutes = [
         component: <VoucherList />,
         label: 'Vouchers',
         icon: MdReceiptLong
+      },
+      {
+        path: '/Registration/Bank Account/BankAccountList',
+        component: <BankAccountList />,
+        label: 'Bank Account',
+        icon: MdAccountBalance
+      },
+      {
+        path: '/Inventory/OpeningStock/List',
+        component: <OpeningStockList />,
+        label: 'Opening Stock',
+        icon: MdInventory
+      },
+      {
+        path: '/Registration/InvoiceReceipt/List',
+        component: <InvoiceReceiptList />,
+        label: 'Invoice Receipt',
+        icon: MdReceipt
       }
     ]
   },
-
   {
     label: 'Sales',
     icon: MdReceipt,
@@ -135,87 +155,35 @@ export const adminRoutes = [
       {
         label: 'Invoice',
         icon: MdReceipt,
-        children: [
-          {
-            path: '/sales/new-invoice',
-            component: <NewInvoice />,
-            label: 'New Invoice',
-          },
-          {
-            path: '/sales/list',
-            component: <SalesHistory />,
-            label: 'List',
-          },
-        ]
+        path: '/sales/invoice/list',
+        component: <SalesHistory />
       },
       {
         label: 'Sales Return / Debit Notes',
         icon: MdEdit,
-        children: [
-          {
-            path: '/Sales-Return/Debit-Notes/Add',
-            component: <AddSalesReturn />,
-            label: 'Add'
-          },
-          {
-            path: '/Sales-Return/Debit-Notes/List',
-            component: <SalesReturnList />,
-            label: 'List'
-          }
-        ]
+        path: '/Sales-Return/Debit-Notes/List',
+        component: <SalesReturnList />,
       },
       {
         label: 'Customers',
+        path: '/Customers/list',
+        component: <CustomerHistory />,
         icon: MdPeople,
-        children: [
-          {
-            path: '/Customers/customer-details',
-            component: <AddCustomer />,
-            label: 'Add'
-          },
-          {
-            path: '/Customers/list',
-            component: <CustomerHistory />,
-            label: 'List'
-          }
-        ]
       },
       {
         label: 'Salesman',
+        path: '/Salesman/list',
+        component: <SalesmanHistory />,
         icon: MdPeople,
-        children: [
-          {
-            path: '/Salesman/add',
-            component: <AddSalesman />,
-            label: 'Add'
-          },
-          {
-            path: '/Salesman/list',
-            component: <SalesmanHistory />,
-            label: 'List'
-          }
-        ]
       },
       {
-        label: 'Delivery-Challan',
+        label: 'Delivery Challan',
+        path: '/Delivery-Challan/List',
+        component: <DeliveryChallanHistory />,
         icon: MdEmojiTransportation,
-        children: [
-          {
-            path: '/Delivery-Challan/Details',
-            component: <AddDeliveryChallan />,
-            label: 'Add'
-          },
-          {
-            path: '/Delivery-Challan/List',
-            component: <DeliveryChallanHistory />,
-            label: 'List'
-          }
-        ]
       }
     ],
   },
-
-
   {
     path: '/Administration/Products/Add',
     component: <AddProduct />,
@@ -267,6 +235,48 @@ export const adminRoutes = [
     path: '/Sales-Return/Debit-Notes/Print/:id',
     component: <PrintSalesReturn />,
     label: 'Print Voucher',
+    hideFromSidebar: true
+  },
+  {
+    path: '/Registration/Bank Account/AddBank',
+    component: <AddBank />,
+    hideFromSidebar: true
+  },
+  {
+    path: '/Inventory/OpeningStock/Add',
+    component: <AddOpeningStock />,
+    label: 'Add Opening Stock',
+    hideFromSidebar: true
+  },
+  {
+    path: '/sales/invoice/add',
+    component: <NewInvoice />,
+    label: 'New Invoice',
+    hideFromSidebar: true
+  },
+  {
+    path: '/Sales-Return/Debit-Notes/Add',
+    component: <AddSalesReturn />,
+    hideFromSidebar: true
+  },
+  {
+    path: '/Registration/InvoiceReceipt/Add',
+    component: <AddInvoiceReceipt />,
+    hideFromSidebar: true
+  },
+  {
+    path: '/Customers/customer-details',
+    component: <AddCustomer />,
+    hideFromSidebar: true
+  },
+  {
+    path: '/Salesman/add',
+    component: <AddSalesman />,
+    hideFromSidebar: true
+  },
+  {
+    path: '/Delivery-Challan/Details',
+    component: <AddDeliveryChallan />,
     hideFromSidebar: true
   }
 ];

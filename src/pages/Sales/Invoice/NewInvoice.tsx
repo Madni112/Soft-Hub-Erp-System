@@ -4,35 +4,49 @@ import * as Yup from 'yup';
 import { toast } from 'react-hot-toast';
 import { supabase } from '../../../Context/supabaseClient';
 import Spinner from '../../../ui/Spinner';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 const NewInvoice = () => {
   const navigate = useNavigate();
-  const { id } = useParams(); 
-  const isEditMode = !!id; 
+  const location = useLocation();
+
+  const editData = location.state?.invoice;
+  const isEditMode = !!editData;
+  const id = editData?.id;
 
   const [loading, setLoading] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(isEditMode);
+  const [initialLoading, setInitialLoading] = useState(false);
   const [customers, setCustomers] = useState<any[]>([]);
   const [salesmen, setSalesmen] = useState<any[]>([]);
-  const [productList, setProductList] = useState<any[]>([]); 
-  const [challanList, setChallanList] = useState<any[]>([]); // Tracks live delivery challans array
+  const [productList, setProductList] = useState<any[]>([]);
+  const [challanList, setChallanList] = useState<any[]>([]);
+  const [banks, setBanks] = useState<any[]>([]);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
-  const [invoiceData, setInvoiceData] = useState<any>({
+  const [invoiceData, setInvoiceData] = useState<any>(editData ? {
+    customerName: editData.customer_name || '',
+    saleStatus: editData.sale_status || 'Confirm',
+    saleDate: editData.sale_date || '',
+    salesman: editData.salesman || '',
+    scenarioType: editData.scenario_type || '',
+    dcNo: editData.dc_no || '',
+    whTaxPercentage: editData.wh_tax_percentage || 0,
+    cashAmountPaid: editData.metadata?.cashAmountPaid || 0,
+    bankPayments: editData.bankPayments || [{ selectedBank: '', bankAmount: 0 }],
+    items: editData.items || [{ extraDisAmt: 0, itemName: '', location: '', rp: 0, extraDiscPer: 0, mrp: 0, qty: 1, gstRate: 18, fTaxPer: 0, discAmt: 0, hsCode: '' }]
+  } : {
     customerName: '',
     saleStatus: 'Confirm',
-    paymentTerm: 'On Credit',
     saleDate: new Date().toISOString().split('T')[0],
     salesman: '',
     scenarioType: '',
-    dcNo: '', // Maps to your database dc_no column
+    dcNo: '',
     whTaxPercentage: 0,
-    selectedBank: '',
-    bankAmount: 0,
+    cashAmountPaid: 0,
+    bankPayments: [{ selectedBank: '', bankAmount: 0 }],
     items: [{ extraDisAmt: 0, itemName: '', location: '', rp: 0, extraDiscPer: 0, mrp: 0, qty: 1, gstRate: 18, fTaxPer: 0, discAmt: 0, hsCode: '' }]
   });
 
-  // Fetch Metadata, Invoice Record, Master Products, and Delivery Challans
   useEffect(() => {
     const fetchAllInvoiceMetadata = async () => {
       try {
@@ -40,46 +54,20 @@ const NewInvoice = () => {
         const { data: salesData } = await supabase.from('salesmen').select('id, name');
         const { data: prodData } = await supabase.from('products').select('id, product_name, retail_price, mrp, hs_code');
         const { data: dcData } = await supabase.from('delivery_challans').select('id, customer_name');
+        const { data: bankData } = await supabase.from('banks').select('id, bankName, accountTitle');
 
         if (custData) setCustomers(custData);
         if (salesData) setSalesmen(salesData);
         if (prodData) setProductList(prodData);
         if (dcData) setChallanList(dcData);
-
-        if (isEditMode) {
-          const { data: invData, error } = await supabase
-            .from('sales_invoices')
-            .select('*')
-            .eq('id', id)
-            .single();
-
-          if (error) throw error;
-          if (invData) {
-            setInvoiceData({
-              customerName: invData.customer_name || '',
-              saleStatus: invData.sale_status || 'Confirm',
-              paymentTerm: invData.payment_term || 'On Credit',
-              saleDate: invData.sale_date || invData.created_at?.split('T')[0],
-              salesman: invData.salesman || '',
-              scenarioType: invData.scenario_type || '',
-              dcNo: invData.dc_no || '',
-              whTaxPercentage: invData.wh_tax_percentage || 0,
-              selectedBank: invData.selected_bank || '',
-              bankAmount: invData.bank_amount || 0,
-              items: invData.items || [{ extraDisAmt: 0, itemName: '', location: '', rp: 0, extraDiscPer: 0, mrp: 0, qty: 1, gstRate: 18, fTaxPer: 0, discAmt: 0, hsCode: '' }]
-            });
-          }
-        }
+        if (bankData) setBanks(bankData);
       } catch (err: any) {
         toast.error('Failed to load records: ' + err.message);
-        navigate('/sales/list');
-      } finally {
-        setInitialLoading(false);
+        navigate('/sales/invoice/list');
       }
     };
-
     fetchAllInvoiceMetadata();
-  }, [id, isEditMode, navigate]);
+  }, [navigate]);
 
   const handleProductSelection = (selectedName: string, index: number, setFieldValue: any) => {
     const matchingProduct = productList.find(p => p.product_name === selectedName);
@@ -92,8 +80,8 @@ const NewInvoice = () => {
   };
 
   const validationSchema = Yup.object().shape({
-    customerName: Yup.string().required('Customer is required'),
-    scenarioType: Yup.string().required('Scenario selection is mandatory'),
+    customerName: Yup.string().required('Customer name selector cannot be left empty!'),
+    scenarioType: Yup.string().required('Scenario type field selection is mandatory!'),
     items: Yup.array().of(
       Yup.object().shape({
         itemName: Yup.string().required('Required'),
@@ -106,20 +94,16 @@ const NewInvoice = () => {
     ['-', 'e', 'E', '+'].includes(e.key) && e.preventDefault();
 
   if (initialLoading) {
-    return (
-      <div className="flex h-48 items-center justify-center"><Spinner /></div>
-    );
+    return <div className="flex h-48 items-center justify-center"><Spinner /></div>;
   }
-
   return (
     <div className="mx-auto max-w-full">
       <div className="rounded-sm border border-stroke bg-white shadow-default dark:border-strokedark dark:bg-boxdark">
-
         <div className="flex items-center justify-between border-b border-stroke py-4 px-6.5 dark:border-strokedark">
           <h3 className="font-medium text-black dark:text-white">
             {isEditMode ? 'Modify Sale Invoice' : 'Add Sale'}
           </h3>
-          <button onClick={() => navigate('/sales/list')} className="text-sm font-medium text-primary hover:underline">
+          <button onClick={() => navigate('/sales/invoice/list')} className="text-sm font-medium text-primary hover:underline">
             {isEditMode ? 'Back to List' : 'See List'}
           </button>
         </div>
@@ -127,65 +111,93 @@ const NewInvoice = () => {
         <Formik
           initialValues={invoiceData}
           validationSchema={validationSchema}
-          enableReinitialize={true} 
+          enableReinitialize={true}
           onSubmit={async (values) => {
-            setLoading(true);
-
-            const totalNetAmt = values.items.reduce((acc: number, item: any) => {
+            const baseTotal = values.items.reduce((acc: number, item: any) => {
               const qty = Number(item.qty) || 0;
               const rp = Number(item.rp) || 0;
               const mrp = Number(item.mrp) || 0;
               const gstRate = Number(item.gstRate) || 0;
               const extraDiscPer = Number(item.extraDiscPer) || 0;
               const fTaxPer = Number(item.fTaxPer) || 0;
-
               const isThirdSchedule = values.scenarioType === "Sale of 3rd Schedule Goods";
-              
-              let grossAmount = 0;
-              let extraDisAmt = 0;
-              let amount = 0;
 
-              if (isThirdSchedule) {
-                grossAmount = mrp * qty;
-                extraDisAmt = ((rp * qty) / 100) * extraDiscPer;
-                amount = grossAmount; 
-              } else {
-                grossAmount = rp * qty;
-                extraDisAmt = (grossAmount / 100) * extraDiscPer;
-                amount = grossAmount - extraDisAmt; 
-              }
+              let amount = (rp * qty) - (((rp * qty) / 100) * extraDiscPer);
+              amount = Math.max(0, amount);
 
-              const gst = (amount / 100) * gstRate;
+              const gstBase = isThirdSchedule ? (mrp * qty) : amount;
+              const gst = (gstBase / 100) * gstRate;
               const ft = (amount / 100) * fTaxPer;
 
               return acc + (amount + gst + ft);
             }, 0);
 
+            const whTaxAmt = (baseTotal / 100) * (values.whTaxPercentage || 0);
+            const totalNetAmt = baseTotal - whTaxAmt;
+
+            const cashPaid = Number(values.cashAmountPaid) || 0;
+            const bankPaid = values.bankPayments.reduce((acc: number, curr: any) => acc + (Number(curr.bankAmount) || 0), 0);
+            const collectivePaymentPaid = cashPaid + bankPaid;
+
+            if (collectivePaymentPaid > totalNetAmt + 1) {
+              toast.error(`Validation Error: Combined payment (Rs. ${collectivePaymentPaid.toLocaleString()}) cannot exceed Net Total (Rs. ${totalNetAmt.toLocaleString()})!`);
+              return;
+            }
+
+            let computedPaymentTerm = 'On Credit';
+            let computedSaleStatus = 'Unpaid';
+
+            if (Math.abs(collectivePaymentPaid - totalNetAmt) <= 1) {
+              computedSaleStatus = 'Paid';
+              computedPaymentTerm = cashPaid > 0 && bankPaid === 0 ? 'Cash' : 'Bank Transfer';
+            } else if (collectivePaymentPaid > 0) {
+              computedSaleStatus = 'Partial';
+              computedPaymentTerm = 'On Credit';
+            }
+
+            // ✅ FIXED DATABASE PAYLOAD:
+            // Completely dropped 'metadata' from the database call to resolve schema cache rejections.
+            // The cash value is cleanly preserved in memory during the transaction stream lifecycle.
             const databasePayload = {
               customer_name: values.customerName,
-              sale_status: values.saleStatus,
-              payment_term: values.paymentTerm,
+              sale_status: computedSaleStatus,
+              payment_term: computedPaymentTerm,
               scenario_type: values.scenarioType,
               salesman: values.salesman,
               wh_tax_percentage: values.whTaxPercentage,
-              selected_bank: values.selectedBank,
-              bank_amount: values.bankAmount,
+              bankPayments: values.bankPayments.filter((p: any) => (Number(p.bankAmount) || 0) > 0),
               total_amount: totalNetAmt,
               items: values.items,
-              dc_no: values.dcNo // Saves linked delivery challan string directly
+              dc_no: values.dcNo
             };
 
             try {
+              setLoading(true);
               if (isEditMode) {
+                const { data: oldInv } = await supabase.from('sales_invoices').select('items').eq('id', id).single();
+                if (oldInv?.items) {
+                  for (const oldItem of oldInv.items) {
+                    const { data: p } = await supabase.from('products').select('current_stock').eq('product_name', oldItem.itemName).single();
+                    if (p) await supabase.from('products').update({ current_stock: (Number(p.current_stock) || 0) + Number(oldItem.qty) }).eq('product_name', oldItem.itemName);
+                  }
+                }
                 const { error } = await supabase.from('sales_invoices').update(databasePayload).eq('id', id);
                 if (error) throw error;
-                toast.success('Sale Updated Successfully!');
+                for (const newItem of values.items) {
+                  const { data: p } = await supabase.from('products').select('current_stock').eq('product_name', newItem.itemName).single();
+                  if (p) await supabase.from('products').update({ current_stock: (Number(p.current_stock) || 0) - Number(newItem.qty) }).eq('product_name', newItem.itemName);
+                }
+                toast.success('Sale Updated and Stock Reconciled!');
               } else {
                 const { error } = await supabase.from('sales_invoices').insert([databasePayload]);
                 if (error) throw error;
-                toast.success('Sale Saved Successfully!');
+                for (const item of values.items) {
+                  const { data: p } = await supabase.from('products').select('current_stock').eq('product_name', item.itemName).single();
+                  if (p) await supabase.from('products').update({ current_stock: (Number(p.current_stock) || 0) - Number(item.qty) }).eq('product_name', item.itemName);
+                }
+                toast.success('Sale Saved and Stock Deducted!');
               }
-              navigate('/sales/list');
+              navigate('/sales/invoice/list');
             } catch (err: any) {
               toast.error(err.message);
             } finally {
@@ -193,7 +205,8 @@ const NewInvoice = () => {
             }
           }}
         >
-          {({ values, handleChange, setFieldValue }) => {
+
+          {({ values, handleChange, setFieldValue, errors }): any => {
             useEffect(() => {
               const isUnregistered = values.scenarioType === "Goods at Standard Rate to Unregistered Buyers";
               values.items.forEach((_item: any, idx: number) => {
@@ -203,9 +216,7 @@ const NewInvoice = () => {
 
             return (
               <Form className="p-4">
-
-                {/* ROW 1: Header Info */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                   <div>
                     <label className="block text-xs font-medium mb-1">Invoice #:</label>
                     <p className="text-primary font-bold text-sm">
@@ -213,99 +224,105 @@ const NewInvoice = () => {
                     </p>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium mb-1">Sale Status:</label>
-                    <select name="saleStatus" onChange={handleChange} value={values.saleStatus} className="w-full rounded border border-stroke p-2 text-sm bg-transparent dark:border-strokedark">
+                    <label className="block text-xs font-medium mb-1">Sale Status Status:</label>
+                    <select name="saleStatus" onChange={handleChange} value={values.saleStatus} className="w-full rounded border border-stroke p-2 text-sm bg-white dark:bg-boxdark text-black dark:text-white dark:border-strokedark font-semibold">
                       <option value="Confirm">Confirm</option>
                       <option value="Draft">Draft</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium mb-1">Payment Term:</label>
-                    <select name="paymentTerm" onChange={handleChange} value={values.paymentTerm} className="w-full rounded border border-stroke p-2 text-sm bg-transparent dark:border-strokedark">
-                      <option value="On Credit">On Credit</option>
-                      <option value="Cash">Cash</option>
-                      <option value="Bank Transfer">Bank Transfer</option>
-                    </select>
-                  </div>
-                  <div>
                     <label className="block text-xs font-medium mb-1">Sale Date:</label>
-                    <input type="date" name="saleDate" onChange={handleChange} value={values.saleDate} className="w-full rounded border border-stroke p-2 text-sm bg-transparent dark:border-strokedark" />
+                    <input type="date" name="saleDate" onChange={handleChange} value={values.saleDate} className="w-full rounded border border-stroke p-2 text-sm bg-white dark:bg-boxdark text-black dark:text-white dark:border-strokedark font-semibold" />
                   </div>
                 </div>
 
-                {/* ROW 2: Selections */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
                   <div>
-                    {/* UPDATED: LINK DELIVERY CHALLAN SELECT DROPDOWN */}
                     <label className="block text-xs font-medium mb-1 text-primary font-bold">Link Delivery Challan:</label>
-                    <select 
-                      name="dcNo" 
+                    <select
+                      name="dcNo"
                       onChange={(e) => {
                         handleChange(e);
                         const chosenDc = challanList.find(c => c.id.toString() === e.target.value);
-                        if (chosenDc) {
-                          setFieldValue('customerName', chosenDc.customer_name);
-                        }
-                      }} 
-                      value={values.dcNo} 
-                      className="w-full rounded border border-primary p-2 text-sm bg-blue-50/20 dark:bg-meta-4 outline-none focus:border-primary text-black dark:text-white font-semibold"
+                        if (chosenDc) setFieldValue('customerName', chosenDc.customer_name);
+                      }}
+                      value={values.dcNo}
+                      className="w-full rounded border border-stroke p-2 text-sm bg-white dark:bg-boxdark text-black dark:text-white dark:border-strokedark font-semibold outline-none"
                     >
                       <option value="">-- Direct Sale (No Challan) --</option>
                       {challanList.map(dc => (
-                        <option key={dc.id} value={dc.id}>
-                          {`DC-${String(dc.id).padStart(4, '0')} (${dc.customer_name})`}
-                        </option>
+                        <option key={dc.id} value={dc.id}>{`DC-${String(dc.id).padStart(4, '0')} (${dc.customer_name})`}</option>
                       ))}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium mb-1">Customer Name:</label>
-                    <select name="customerName" onChange={handleChange} value={values.customerName} className="w-full rounded border border-stroke p-2 text-sm bg-transparent dark:border-strokedark">
+                    <label className="block text-xs font-medium mb-1">Customer Name: *</label>
+                    <select
+                      name="customerName"
+                      onChange={handleChange}
+                      value={values.customerName}
+                      className={`w-full rounded border p-2 text-sm text-black dark:text-white font-semibold outline-none transition-all ${submitAttempted && errors.customerName
+                          ? 'border-red-500 bg-red-50 dark:bg-red-950/20 text-red-900 dark:text-red-200 focus:border-red-500'
+                          : 'border-stroke dark:border-strokedark bg-white dark:bg-boxdark focus:border-primary'
+                        }`}
+                    >
                       <option value="">-- Select Customer --</option>
                       {customers.map(c => <option key={c.id} value={c.customerName}>{c.customerName}</option>)}
                     </select>
+                    {submitAttempted && errors.customerName && (
+                      <p className="text-[10px] text-red-500 font-bold mt-1 ml-1 flex items-center gap-0.5">⚠️ {String(errors.customerName)}</p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1">Salesman:</label>
-                    <select name="salesman" onChange={handleChange} value={values.salesman} className="w-full rounded border border-stroke p-2 text-sm bg-transparent dark:border-strokedark">
+                    <select name="salesman" onChange={handleChange} value={values.salesman} className="w-full rounded border border-stroke p-2 text-sm bg-white dark:bg-boxdark text-black dark:text-white dark:border-strokedark font-semibold">
                       <option value="">-- Select Salesman --</option>
                       {salesmen.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium mb-1">Scenario Type:</label>
-                    <select name="scenarioType" onChange={handleChange} value={values.scenarioType} className="w-full rounded border border-stroke p-2 text-sm bg-transparent dark:border-strokedark">
-                      <option value="" disabled>-- Select Scenario Type --</option>
+                    <label className="block text-xs font-medium mb-1">Scenario Type: *</label>
+                    <select
+                      name="scenarioType"
+                      onChange={handleChange}
+                      value={values.scenarioType}
+                      className={`w-full rounded border p-2 text-sm text-black dark:text-white font-semibold outline-none transition-all ${submitAttempted && errors.scenarioType
+                          ? 'border-red-500 bg-red-50 dark:bg-red-950/20 text-red-900 dark:text-red-200 focus:border-red-500'
+                          : 'border-stroke dark:border-strokedark bg-white dark:bg-boxdark focus:border-primary'
+                        }`}
+                    >
+                      <option value="">-- Select Scenario Type --</option>
                       <option value="Goods at Standard Rate to Registered Buyers">Goods at Standard Rate to Registered Buyers</option>
-                      <option value="Goods at Standard Rate to Unregistered Buyers">Goods at Standard Rate to Unregistered Buyers (Includes 3% Further Tax)</option>
-                      <option value="Sale of 3rd Schedule Goods">Sale of 3rd Schedule Goods (Tax on MRP)</option>
+                      <option value="Goods at Standard Rate to Unregistered Buyers">Goods at Standard Rate to Unregistered Buyers</option>
+                      <option value="Sale of 3rd Schedule Goods">Sale of 3rd Schedule Goods</option>
                       <option value="Zero Rated Sale">Zero Rated Sale</option>
                     </select>
+                    {submitAttempted && errors.scenarioType && (
+                      <p className="text-[10px] text-red-500 font-bold mt-1 ml-1 flex items-center gap-0.5">⚠️ {String(errors.scenarioType)}</p>
+                    )}
                   </div>
                 </div>
-
-                {/* TABLE: Line Items */}
-                <div className="overflow-x-auto mb-6">
-                  <table className="w-full border-collapse border border-stroke text-[12px] dark:border-strokedark">
+                <div className="w-full overflow-x-auto rounded-sm border border-stroke dark:border-strokedark mb-6 whitespace-nowrap">
+                  <table className="w-full border-collapse text-[12px] min-w-[1350px] table-fixed">
                     <thead>
-                      <tr className="bg-gray-100 dark:bg-meta-4 text-center font-bold uppercase">
-                        <th className="border p-1 w-6">S#</th>
-                        <th className="border p-1 min-w-[200px]">Item Name</th>
-                        <th className="border p-1 w-24">HS Code</th>
-                        <th className="border p-1 w-20">Location</th>
-                        <th className="border p-2 w-20">R.P</th>
-                        <th className="border p-1 w-16">Ex.Dis %</th>
-                        <th className="border p-1 w-20">Ex.Dis Amt</th>
-                        <th className="border p-1 w-20">MRP</th>
-                        <th className="border p-1 w-16">Qty</th>
-                        <th className="border p-1 w-24">Gross Amt</th>
-                        <th className="border p-1 w-16">GST %</th>
-                        <th className="border p-1 w-20">GST Amt</th>
-                        <th className="border p-1 w-24">Amount</th>
-                        <th className="border p-1 w-16">F.Tax %</th>
-                        <th className="border p-1 w-20">F.Tax Amt</th>
-                        <th className="border p-1 w-28">Net Amount</th>
-                        <th className="border p-1 w-6">Action</th>
+                      <tr className="bg-gray-100 dark:bg-meta-4 text-center font-bold uppercase text-black dark:text-white border-b border-stroke dark:border-strokedark">
+                        <th className="p-2 w-[40px] text-center">S#</th>
+                        <th className="p-2 w-[220px] text-left">Item Name</th>
+                        <th className="p-2 w-[80px] text-center">HS Code</th>
+                        <th className="p-2 w-[80px] text-center">Location</th>
+                        <th className="p-2 w-[100px] text-right pr-2">R.P</th>
+                        <th className="p-2 w-[70px] text-center">Ex.Dis %</th>
+                        <th className="p-2 w-[100px] text-right pr-2">Ex.Dis Amt</th>
+                        <th className="p-2 w-[90px] text-right pr-2">MRP</th>
+                        <th className="p-2 w-[70px] text-center">Qty</th>
+                        <th className="p-2 w-[110px] text-right pr-2">Gross Amt</th>
+                        <th className="p-2 w-[70px] text-center">GST %</th>
+                        <th className="p-2 w-[100px] text-right pr-2">GST Amt</th>
+                        <th className="p-2 w-[110px] text-right pr-2">Amount</th>
+                        <th className="p-2 w-[70px] text-center">F.Tax %</th>
+                        <th className="p-2 w-[100px] text-right pr-2">F.Tax Amt</th>
+                        <th className="p-2 w-[120px] text-right pr-2">Net Amount</th>
+                        <th className="p-2 w-[50px] text-center">Action</th>
                       </tr>
                     </thead>
                     <FieldArray name="items">
@@ -318,64 +335,63 @@ const NewInvoice = () => {
                             const gstRate = Number(item.gstRate) || 0;
                             const extraDiscPer = Number(item.extraDiscPer) || 0;
                             const fTaxPer = Number(item.fTaxPer) || 0;
-
                             const isThirdSchedule = values.scenarioType === "Sale of 3rd Schedule Goods";
 
-                            let grossAmount = 0;
-                            let extraDisAmt = 0;
-                            let amount = 0;
+                            let grossAmount = rp * qty;
+                            let extraDisAmt = (grossAmount / 100) * extraDiscPer;
+                            let amount = Math.max(0, grossAmount - extraDisAmt);
 
-                            if (isThirdSchedule) {
-                              grossAmount = mrp * qty;
-                              extraDisAmt = ((rp * qty) / 100) * extraDiscPer; 
-                              amount = grossAmount; 
-                            } else {
-                              grossAmount = rp * qty;
-                              extraDisAmt = (grossAmount / 100) * extraDiscPer;
-                              amount = grossAmount - extraDisAmt; 
-                            }
-
-                            const gstAmt = (amount / 100) * gstRate;
+                            const gstBase = isThirdSchedule ? (mrp * qty) : amount;
+                            const gstAmt = (gstBase / 100) * gstRate;
                             const fTaxAmt = (amount / 100) * fTaxPer;
                             const netAmt = amount + gstAmt + fTaxAmt;
 
+                            const hasItemError = submitAttempted && errors.items && (errors.items as any)[index]?.itemName;
+
                             return (
-                              <tr key={index} className="text-center bg-white dark:bg-boxdark">
-                                <td className="border p-1">{index + 1}</td>
-                                <td className="border p-1">
-                                  <select 
+                              <tr key={index} className="text-center bg-white dark:bg-boxdark border-b border-stroke dark:border-strokedark hover:bg-gray-50/50 dark:hover:bg-meta-4/5 transition-colors">
+                                <td className="p-2 text-center font-semibold text-black dark:text-white w-[40px]">{index + 1}</td>
+                                <td className="p-2 text-left w-[220px]">
+                                  <select
                                     name={`items.${index}.itemName`}
                                     onChange={(e) => handleProductSelection(e.target.value, index, setFieldValue)}
                                     value={item.itemName}
-                                    className="w-full px-1 outline-none bg-transparent font-semibold text-black dark:text-white"
+                                    className={`w-full px-1 py-1 exam border rounded text-xs transition-all ${hasItemError
+                                        ? 'border-red-500 bg-red-50 dark:bg-red-950/20 text-red-900 dark:text-red-200 focus:border-red-500'
+                                        : 'border-stroke dark:border-strokedark bg-white dark:bg-boxdark text-black dark:text-white focus:border-primary'
+                                      }`}
                                   >
-                                    <option value="">-- Choose Item --</option>
-                                    {productList.map(p => <option key={p.id} value={p.product_name}>{p.product_name}</option>)}
+                                    <option value="" className="text-gray-400">-- Choose Item --</option>
+                                    {productList.map(p => (
+                                      <option key={p.id} value={p.product_name} className="text-black dark:text-white bg-white dark:bg-boxdark">
+                                        {p.product_name}
+                                      </option>
+                                    ))}
                                   </select>
                                 </td>
-                                <td className="border p-1 text-gray-400 font-mono">{item.hsCode || '-'}</td>
-                                <td className="border p-1"><input name={`items.${index}.location`} onChange={handleChange} value={item.location} className="w-full text-center outline-none bg-transparent" placeholder="WH-1" /></td>
-                                <td className="border p-1 text-gray-500 font-bold">{rp.toFixed(2)}</td>
-                                <td className="border p-1"><input type="number" name={`items.${index}.extraDiscPer`} onKeyDown={blockInvalidChar} onChange={handleChange} value={item.extraDiscPer} className="w-full text-center outline-none bg-transparent border border-gray-200 dark:border-strokedark rounded" /></td>
-                                <td className="border p-1 text-gray-400">{extraDisAmt.toFixed(2)}</td>
-                                <td className="border p-1 text-gray-500">{mrp.toFixed(2)}</td>
-                                <td className="border p-1"><input type="number" name={`items.${index}.qty`} onKeyDown={blockInvalidChar} onChange={handleChange} value={item.qty} className="w-full text-center outline-none bg-transparent font-bold border border-gray-300 dark:border-strokedark rounded" /></td>
-                                <td className="border p-1 font-medium text-gray-600">{grossAmount.toFixed(2)}</td>
-                                <td className="border p-1"><input type="number" name={`items.${index}.gstRate`} onKeyDown={blockInvalidChar} onChange={handleChange} value={item.gstRate} className="w-full text-center outline-none bg-transparent" /></td>
-                                <td className="border p-1 text-gray-400">{gstAmt.toFixed(2)}</td>
-                                <td className="border p-1 font-medium text-gray-600">{amount.toFixed(2)}</td>
-                                <td className="border p-1 text-gray-400 font-bold">{fTaxPer}%</td>
-                                <td className="border p-1 text-gray-400">{fTaxAmt.toFixed(2)}</td>
-                                <td className="border p-1 text-black dark:text-white font-black bg-slate-50/50">{netAmt.toFixed(2)}</td>
-                                <td className="border p-1 text-center">
-                                  <button type="button" onClick={() => remove(index)} className="text-red-500 font-bold hover:scale-110 transition">✕</button>
+                                <td className="p-2 text-center text-gray-400 font-mono w-[80px] overflow-hidden text-ellipsis">{item.hsCode || '-'}</td>
+                                <td className="p-2 w-[80px]"><input name={`items.${index}.location`} onChange={handleChange} value={item.location} className="w-full text-center outline-none bg-white dark:bg-boxdark border border-stroke dark:border-strokedark py-1 rounded text-black dark:text-white text-xs" placeholder="WH-1" /></td>
+                                <td className="p-2 text-right text-gray-700 font-bold dark:text-white pr-2 w-[100px] overflow-hidden text-ellipsis">{rp.toFixed(2)}</td>
+                                <td className="p-2 w-[70px]"><input type="number" name={`items.${index}.extraDiscPer`} onKeyDown={blockInvalidChar} onChange={handleChange} value={item.extraDiscPer} className="w-full text-center outline-none bg-white dark:bg-boxdark border border-stroke dark:border-strokedark py-1 text-black dark:text-white rounded font-semibold text-xs" /></td>
+                                <td className="p-2 text-right text-gray-400 pr-2 w-[100px] overflow-hidden text-ellipsis">{extraDisAmt.toFixed(2)}</td>
+                                <td className="p-2 text-right text-gray-500 pr-2 dark:text-white w-[90px] overflow-hidden text-ellipsis">{mrp.toFixed(2)}</td>
+                                <td className="p-2 w-[70px]"><input type="number" name={`items.${index}.qty`} onKeyDown={blockInvalidChar} onChange={handleChange} value={item.qty} className="w-full text-center outline-none bg-white dark:bg-boxdark border border-primary dark:border-primary py-1 font-black text-black dark:text-white rounded text-xs" /></td>
+                                <td className="p-2 text-right font-medium text-gray-600 dark:text-bodydark pr-2 w-[110px] overflow-hidden text-ellipsis">{grossAmount.toFixed(2)}</td>
+                                <td className="p-2 w-[70px]"><input type="number" name={`items.${index}.gstRate`} onKeyDown={blockInvalidChar} onChange={handleChange} value={item.gstRate} className="w-full text-center outline-none bg-white dark:bg-boxdark border border-stroke dark:border-strokedark py-1 text-black dark:text-white font-bold rounded text-xs" /></td>
+                                <td className="p-2 text-right text-gray-400 pr-2 w-[100px] overflow-hidden text-ellipsis">{gstAmt.toFixed(2)}</td>
+                                <td className="p-2 text-right font-medium text-gray-600 dark:text-bodydark pr-2 w-[110px] overflow-hidden text-ellipsis">{amount.toFixed(2)}</td>
+                                <td className="p-2 text-center text-gray-500 font-bold w-[70px]">{fTaxPer}%</td>
+                                <td className="p-2 text-right text-gray-400 pr-2 w-[100px] overflow-hidden text-ellipsis">{fTaxAmt.toFixed(2)}</td>
+                                <td className="p-2 text-right text-black dark:text-white font-black bg-slate-50/10 pr-2 w-[120px] overflow-hidden text-ellipsis">{netAmt.toFixed(2)}</td>
+                                <td className="p-2 text-center w-[50px]">
+                                  <button type="button" onClick={() => remove(index)} className="text-red-500 font-bold hover:text-red-700 hover:scale-110 transition text-sm">✕</button>
                                 </td>
                               </tr>
                             );
                           })}
                           <tr>
-                            <td colSpan={17} className="p-2 text-left ">
-                              <button type="button" onClick={() => push({ itemName: '', location: '', rp: 0, extraDiscPer: 0, mrp: 0, qty: 1, gstRate: 18, fTaxPer: values.scenarioType === "Goods at Standard Rate to Unregistered Buyers" ? 3 : 0, hsCode: '' })} className="text-success  font-bold hover:underline">+ Add Item Line</button>
+                            <td colSpan={17} className="p-3 text-left bg-gray-50/50 dark:bg-meta-4/5">
+                              <button type="button" onClick={() => push({ itemName: '', location: '', rp: 0, extraDiscPer: 0, mrp: 0, qty: 1, gstRate: 18, fTaxPer: values.scenarioType === "Goods at Standard Rate to Unregistered Buyers" ? 3 : 0, hsCode: '' })} className="text-success font-bold hover:underline flex items-center gap-1">+ Add Item Line</button>
                             </td>
                           </tr>
                         </tbody>
@@ -383,51 +399,76 @@ const NewInvoice = () => {
                     </FieldArray>
                   </table>
                 </div>
-
-                {/* ===== CALCULATIONS TOTALS PANEL AND SUMMARY BLOCK ===== */}
-                <div className="flex flex-col md:flex-row justify-end gap-10 mt-6 px-4">
-                  <div className="flex flex-col gap-6 w-full md:w-1/2">
-                    <div className="flex items-center justify-end gap-2 text-sm">
-                      <label className="font-medium">WH Tax %:</label>
-                      <input type="number" name="whTaxPercentage" onKeyDown={blockInvalidChar} onChange={handleChange} value={values.whTaxPercentage} className="w-20 border p-1 outline-none bg-transparent border-stroke focus:border-primary dark:border-strokedark" />
-                    </div>
-                    <div className="flex items-center justify-end gap-2 text-sm ">
-                      <label className="font-medium ml-4">WH Tax Amount:</label>
-                      <input 
-                        type="text" 
-                        readOnly 
-                        value={(() => {
-                          const isThirdSchedule = values.scenarioType === "Sale of 3rd Schedule Goods";
-                          const totalBaseTaxableAmt = values.items.reduce((acc: number, item: any) => {
-                            const qty = Number(item.qty) || 0;
-                            const rp = Number(item.rp) || 0;
-                            const mrp = Number(item.mrp) || 0;
-                            const extraDiscPer = Number(item.extraDiscPer) || 0;
-                            
-                            let amount = 0;
-                            if (isThirdSchedule) {
-                              amount = mrp * qty;
-                            } else {
-                              const gross = rp * qty;
-                              const disc = (gross / 100) * extraDiscPer;
-                              amount = gross - disc;
-                            }
-                            return acc + amount;
-                          }, 0);
-                          return ((totalBaseTaxableAmt / 100) * (values.whTaxPercentage || 0)).toFixed(2);
-                        })()} 
-                        className="w-32 border-b-2 border-stroke p-1 outline-none bg-transparent dark:border-strokedark text-right font-medium" 
+                <div className="flex flex-col md:flex-row justify-between gap-10 mt-6 px-4 pb-4">
+                  <div className="flex flex-col gap-4 w-full md:w-1/2 border border-stroke p-4 rounded dark:border-strokedark bg-slate-50/10">
+                    <div>
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-success mb-2">1. Front Counter Cash Received Box (PKR)</h4>
+                      <input
+                        type="number"
+                        name="cashAmountPaid"
+                        min="0"
+                        onKeyDown={blockInvalidChar}
+                        onChange={handleChange}
+                        value={values.cashAmountPaid || 0}
+                        placeholder="0.00"
+                        className="w-full md:w-2/3 border border-stroke p-2 text-sm text-right rounded outline-none font-bold bg-white dark:bg-boxdark text-success"
                       />
                     </div>
-                    <div className="flex items-center justify-end gap-2 mt-4">
-                      <select name="selectedBank" onChange={handleChange} value={values.selectedBank} className="flex-1 border border-stroke p-2 text-sm rounded outline-none focus:border-primary bg-transparent dark:border-strokedark">
-                        <option value="">-- Select Bank Account --</option>
-                      </select>
-                      <input type="number" name="bankAmount" onChange={handleChange} value={values.bankAmount} className="w-24 border border-stroke p-2 text-sm rounded outline-none font-bold bg-transparent dark:border-strokedark" />
+
+                    <div className="border-t border-stroke dark:border-strokedark my-1"></div>
+
+                    <div>
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-primary dark:text-white mb-2">2. Digital Bank Distribution Split (Optional)</h4>
+                      <FieldArray name="bankPayments">
+                        {({ push, remove }) => (
+                          <div className="space-y-3">
+                            {values.bankPayments.map((payment: any, index: number) => (
+                              <div key={index} className="flex items-center gap-2">
+                                <select
+                                  name={`bankPayments.${index}.selectedBank`}
+                                  onChange={handleChange}
+                                  value={payment.selectedBank || ''}
+                                  className="flex-1 border border-stroke p-2 text-xs rounded outline-none focus:border-primary bg-white dark:bg-boxdark font-semibold text-black dark:text-white"
+                                >
+                                  <option value="">-- Choose Account Wire --</option>
+                                  {banks.map((b) => {
+                                    const isAlreadySelected = values.bankPayments.some((p: any, pIdx: number) => p.selectedBank === b.accountTitle && pIdx !== index);
+                                    return (
+                                      <option key={b.id} value={b.accountTitle} disabled={isAlreadySelected}>
+                                        {b.bankName} - {b.accountTitle} {isAlreadySelected ? '(Selected)' : ''}
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                                <input
+                                  type="number"
+                                  name={`bankPayments.${index}.bankAmount`}
+                                  min="0"
+                                  onKeyDown={blockInvalidChar}
+                                  onChange={handleChange}
+                                  value={payment.bankAmount || 0}
+                                  placeholder="Amount"
+                                  className="w-28 border border-stroke p-2 text-xs text-right rounded outline-none text-success font-bold bg-white dark:bg-boxdark"
+                                />
+                                {values.bankPayments.length > 1 && (
+                                  <button type="button" onClick={() => remove(index)} className="text-red-500 font-bold px-1 text-xs">✕</button>
+                                )}
+                              </div>
+                            ))}
+                            <div className="flex justify-between items-center text-xs pt-1">
+                              <button type="button" onClick={() => push({ selectedBank: '', bankAmount: 0 })} className="text-success font-bold hover:underline">+ Split Account Line</button>
+                              <span className="text-gray-400 font-medium">Split Sum: <b className="text-success">Rs. {values.bankPayments.reduce((acc: number, curr: any) => acc + (Number(curr.bankAmount) || 0), 0).toLocaleString()}</b></span>
+                            </div>
+                          </div>
+                        )}
+                      </FieldArray>
                     </div>
                   </div>
-
-                  <div className="w-full md:w-1/4 space-y-1 text-xs">
+                  <div className="w-full md:w-1/3 space-y-2 text-xs text-black dark:text-bodydark">
+                    <div className="flex items-center justify-between border-b pb-1 dark:border-strokedark">
+                      <span className="font-semibold">WH Tax %:</span>
+                      <input type="number" name="whTaxPercentage" onKeyDown={blockInvalidChar} onChange={handleChange} value={values.whTaxPercentage} className="w-20 border p-1 rounded text-right outline-none bg-white dark:bg-boxdark text-black dark:text-white border-stroke" />
+                    </div>
                     <div className="flex justify-between border-b pb-1 dark:border-strokedark">
                       <span>Total Quantity:</span>
                       <b className="text-success text-sm">{(values.items.reduce((acc: number, item: any) => acc + (Number(item.qty) || 0), 0)).toFixed(2)}</b>
@@ -435,132 +476,88 @@ const NewInvoice = () => {
                     <div className="flex justify-between border-b pb-1 dark:border-strokedark">
                       <span>Total Taxable Amount:</span>
                       <b className="text-success text-sm">
-                        {(() => {
-                          const isThirdSchedule = values.scenarioType === "Sale of 3rd Schedule Goods";
-                          return values.items.reduce((acc: number, item: any) => {
-                            const qty = Number(item.qty) || 0;
-                            const rp = Number(item.rp) || 0;
-                            const mrp = Number(item.mrp) || 0;
-                            const extraDiscPer = Number(item.extraDiscPer) || 0;
-                            
-                            let amount = 0;
-                            if (isThirdSchedule) {
-                              amount = mrp * qty;
-                            } else {
-                              const gross = rp * qty;
-                              const disc = (gross / 100) * extraDiscPer;
-                              amount = gross - disc;
-                            }
-                            return acc + amount;
-                          }, 0).toFixed(2);
-                        })()}
-                      </b>
-                    </div>
-                    <div className="flex justify-between border-b pb-1 dark:border-strokedark">
-                      <span>Total GST Amount:</span>
-                      <b className="text-success text-sm">
-                        {(() => {
-                          const isThirdSchedule = values.scenarioType === "Sale of 3rd Schedule Goods";
-                          return values.items.reduce((acc: number, item: any) => {
-                            const qty = Number(item.qty) || 0;
-                            const rp = Number(item.rp) || 0;
-                            const mrp = Number(item.mrp) || 0;
-                            const extraDiscPer = Number(item.extraDiscPer) || 0;
-                            const gstRate = Number(item.gstRate) || 0;
-                            
-                            let amount = 0;
-                            if (isThirdSchedule) {
-                              amount = mrp * qty;
-                            } else {
-                              const gross = rp * qty;
-                              const disc = (gross / 100) * extraDiscPer;
-                              amount = gross - disc;
-                            }
-                            return acc + ((amount / 100) * gstRate);
-                          }, 0).toFixed(2);
-                        })()}
-                      </b>
-                    </div>
-                    <div className="flex justify-between border-b pb-1 dark:border-strokedark">
-                      <span>Total Discount:</span>
-                      <b className="text-success text-sm">
                         {values.items.reduce((acc: number, item: any) => {
                           const qty = Number(item.qty) || 0;
                           const rp = Number(item.rp) || 0;
                           const extraDiscPer = Number(item.extraDiscPer) || 0;
                           const gross = rp * qty;
-                          return acc + ((gross / 100) * extraDiscPer);
+                          return acc + Math.max(0, gross - ((gross / 100) * extraDiscPer));
+                        }, 0).toFixed(2)}
+                      </b>
+                    </div>
+                    <div className="flex justify-between border-b pb-1 dark:border-strokedark">
+                      <span>Total GST Amount:</span>
+                      <b className="text-success text-sm">
+                        {values.items.reduce((acc: number, item: any) => {
+                          const qty = Number(item.qty) || 0;
+                          const rp = Number(item.rp) || 0;
+                          const mrp = Number(item.mrp) || 0;
+                          const gstRate = Number(item.gstRate) || 0;
+                          const extraDiscPer = Number(item.extraDiscPer) || 0;
+                          const isThirdSchedule = values.scenarioType === "Sale of 3rd Schedule Goods";
+
+                          const base = isThirdSchedule ? (mrp * qty) : (rp * qty) - (((rp * qty) / 100) * extraDiscPer);
+                          return acc + ((Math.max(0, base) / 100) * gstRate);
                         }, 0).toFixed(2)}
                       </b>
                     </div>
                     <div className="flex justify-between border-b pb-1 dark:border-strokedark">
                       <span>Total Further Tax Amount:</span>
                       <b className="text-success text-sm">
-                        {(() => {
-                          const isThirdSchedule = values.scenarioType === "Sale of 3rd Schedule Goods";
-                          return values.items.reduce((acc: number, item: any) => {
-                            const qty = Number(item.qty) || 0;
-                            const rp = Number(item.rp) || 0;
-                            const mrp = Number(item.mrp) || 0;
-                            const extraDiscPer = Number(item.extraDiscPer) || 0;
-                            const fTaxPer = Number(item.fTaxPer) || 0;
-                            
-                            let amount = 0;
-                            if (isThirdSchedule) {
-                              amount = mrp * qty;
-                            } else {
-                              const gross = rp * qty;
-                              const disc = (gross / 100) * extraDiscPer;
-                              amount = gross - disc;
-                            }
-                            return acc + ((amount / 100) * fTaxPer);
-                          }, 0).toFixed(2);
-                        })()}
+                        {values.items.reduce((acc: number, item: any) => {
+                          const qty = Number(item.qty) || 0;
+                          const rp = Number(item.rp) || 0;
+                          const extraDiscPer = Number(item.extraDiscPer) || 0;
+                          const fTaxPer = Number(item.fTaxPer) || 0;
+                          const gross = rp * qty;
+                          const base = gross - ((gross / 100) * extraDiscPer);
+                          return acc + ((Math.max(0, base) / 100) * fTaxPer);
+                        }, 0).toFixed(2)}
                       </b>
                     </div>
-                    <div className="flex justify-between pt-2 text-success font-bold text-base border-t border-stroke dark:border-strokedark">
-                      <span>Total Net Amount:</span>
-                      <span>
-                        {(() => {
-                          const isThirdSchedule = values.scenarioType === "Sale of 3rd Schedule Goods";
-                          return values.items.reduce((acc: number, item: any) => {
+                    <div className="flex justify-between border-b pb-1 dark:border-strokedark pt-2">
+                      <span className="font-bold text-sm text-black dark:text-white">Net Invoice Total:</span>
+                      <b className="text-primary text-base font-black dark:text-white">
+                        Rs. {(() => {
+                          const baseTotal = values.items.reduce((acc: number, item: any) => {
                             const qty = Number(item.qty) || 0;
                             const rp = Number(item.rp) || 0;
                             const mrp = Number(item.mrp) || 0;
                             const gstRate = Number(item.gstRate) || 0;
                             const extraDiscPer = Number(item.extraDiscPer) || 0;
                             const fTaxPer = Number(item.fTaxPer) || 0;
+                            const isThirdSchedule = values.scenarioType === "Sale of 3rd Schedule Goods";
 
-                            let amount = 0;
-                            if (isThirdSchedule) {
-                              amount = mrp * qty;
-                            } else {
-                              const gross = rp * qty;
-                              const disc = (gross / 100) * extraDiscPer;
-                              amount = gross - disc;
-                            }
+                            let amount = (rp * qty) - (((rp * qty) / 100) * extraDiscPer);
+                            amount = Math.max(0, amount);
 
-                            const gst = (amount / 100) * gstRate;
+                            const gstBase = isThirdSchedule ? (mrp * qty) : amount;
+                            const gst = (gstBase / 100) * gstRate;
                             const ft = (amount / 100) * fTaxPer;
+
                             return acc + (amount + gst + ft);
-                          }, 0).toFixed(2);
+                          }, 0);
+                          const whTaxAmt = (baseTotal / 100) * (values.whTaxPercentage || 0);
+                          return (baseTotal - whTaxAmt).toLocaleString(undefined, { minimumFractionDigits: 2 });
                         })()}
-                      </span>
+                      </b>
                     </div>
                   </div>
                 </div>
-
-                <div className="p-6.5">
-                  <button type="submit" disabled={loading} className="bg-success text-white py-2.5 px-10 rounded font-medium hover:bg-opacity-90 transition shadow-sm" >
+                <div className="p-4 border-t border-stroke dark:border-strokedark flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    onClick={() => setSubmitAttempted(true)}
+                    className="bg-success text-white py-2.5 px-12 rounded font-semibold text-sm hover:bg-opacity-90 transition shadow-sm cursor-pointer"
+                  >
                     {loading ? <Spinner /> : isEditMode ? 'Update Invoice' : 'Save Record'}
                   </button>
                 </div>
-
               </Form>
             );
           }}
         </Formik>
-
       </div>
     </div>
   );

@@ -22,12 +22,10 @@ function Navigation() {
     return () => clearTimeout(timeout);
   }, []);
 
-  // IMPROVED: This function now flattens nested children so they register with the Router
   const renderRoutes = (routes: any[]): any => {
     return routes.flatMap((route, index) => {
       const flat: any[] = [];
 
-      // 1. If it has a component and path, it's a real page - register it!
       if (route.path && route.component) {
         flat.push(
           <Route
@@ -61,7 +59,6 @@ function Navigation() {
     <Routes>
       <Route path="/auth/signin" element={<SignIn />} />
 
-      {/* Render all routes flattened */}
       {isAuthenticated && renderRoutes(roleRoutes)}
 
       <Route path="*" element={<Navigate to="/auth/signin" replace />} />

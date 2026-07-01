@@ -55,7 +55,8 @@ function VoucherList() {
   const filteredVouchers = vouchers.filter((v) =>
     v.voucher_no?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     v.voucher_type?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    v.notes?.toLowerCase().includes(searchTerm.toLowerCase())
+    v.notes?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    v.narration?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const totalEntries = filteredVouchers.length;
@@ -70,7 +71,6 @@ function VoucherList() {
 
   return (
     <div className="mx-auto max-w-7xl flex flex-col gap-6 relative text-xs">
-
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-black dark:text-white flex items-center gap-2">
           🧾 General Ledger Financial Vouchers
@@ -78,14 +78,13 @@ function VoucherList() {
         <button
           type="button"
           onClick={() => navigate('/Registration/Vouchers/Add')}
-          className="flex items-center justify-center rounded bg-primary py-2 px-4 text-sm font-medium text-white hover:bg-opacity-90 transition duration-150 shadow-sm"
+          className="flex items-center justify-center rounded bg-primary py-2 px-4 text-sm font-medium text-white hover:bg-opacity-90 transition duration-150 shadow-sm cursor-pointer"
         >
           + Add New Voucher
         </button>
       </div>
 
       <div className="rounded-sm border border-stroke bg-white shadow-default dark:border-strokedark dark:bg-boxdark p-6">
-
         <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-4">
           <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
             <span>Show</span>
@@ -100,12 +99,12 @@ function VoucherList() {
             </select>
             <span>entries</span>
           </div>
-
           <div className="flex items-center gap-2 text-xs w-full sm:w-auto text-gray-500 dark:text-gray-400">
             <span>Search:</span>
             <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search voucher no, type..." className="w-full sm:w-64 rounded border border-stroke py-1.5 px-3 bg-transparent dark:border-strokedark outline-none text-xs text-black dark:text-white" />
           </div>
         </div>
+
         <div className="max-w-full overflow-x-auto">
           <table className="w-full table-auto border-collapse">
             <thead>
@@ -138,7 +137,6 @@ function VoucherList() {
                           <MdAssignment size={11} /> {v.voucher_type}
                         </span>
                       </td>
-
                       <td className="py-3.5 px-4 text-gray-600 dark:text-gray-400 font-medium max-w-xs">
                         <div className="flex flex-col gap-0.5">
                           {v.items && v.items.map((item: any, idx: number) => {
@@ -149,29 +147,17 @@ function VoucherList() {
                               </div>
                             );
                           })}
-                          {v.notes && <p className="text-[10px] text-primary dark:text-blue-400 border-t border-stroke dark:border-strokedark mt-1 pt-0.5 italic">Note: {v.notes}</p>}
+                          {(v.notes || v.narration) && <p className="text-[10px] text-primary dark:text-blue-400 border-t border-stroke dark:border-strokedark mt-1 pt-0.5 italic">Note: {v.notes || v.narration}</p>}
                         </div>
                       </td>
-
                       <td className="py-3.5 px-4 text-right font-bold text-black dark:text-white font-mono">{Number(v.total_amount || 0).toFixed(2)}</td>
                       <td className="py-3.5 px-4 text-center text-gray-500 font-medium">{v.voucher_date}</td>
-
                       <td className="py-3.5 px-4 text-center">
                         <div className="flex items-center justify-center space-x-3">
-                          <button
-                            type="button"
-                            onClick={() => navigate('/Registration/Vouchers/Add', { state: { voucher: v } })}
-                            className="text-gray-500 hover:text-primary transition p-0.5"
-                            title="View or Edit Voucher Details"
-                          >
+                          <button type="button" onClick={() => navigate('/Registration/Vouchers/Add', { state: { voucher: v } })} className="text-gray-500 hover:text-primary transition p-0.5 cursor-pointer" title="View or Edit Voucher Details" >
                             <MdReceipt size={18} />
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteVoucher(v.id)}
-                            className="text-gray-500 hover:text-danger transition p-0.5"
-                            title="Delete Voucher Profile"
-                          >
+                          <button type="button" onClick={() => handleDeleteVoucher(v.id)} className="text-gray-500 hover:text-danger transition p-0.5 cursor-pointer" title="Delete Voucher Profile" >
                             <MdDelete size={18} />
                           </button>
                         </div>
@@ -184,17 +170,16 @@ function VoucherList() {
           </table>
         </div>
 
-        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mt-4 pt-4 border-t border-stroke dark:border-stroke">
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mt-4 pt-4 border-t border-stroke dark:border-strokedark">
           <div className="text-xs text-gray-500 dark:text-gray-400">Showing {startIndex + 1} to {endIndex} of {totalEntries} entries</div>
           {totalPages > 1 && (
             <div className="flex items-center gap-1">
-              <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => Math.max(p - 1, 1))} className="px-2 py-1 rounded border border-stroke text-[10px] font-medium disabled:opacity-30">Previous</button>
-              {Array.from({ length: totalPages }, (_, i) => <button key={i + 1} onClick={() => setCurrentPage(i + 1)} className={`px-2 py-1 rounded text-[10px] font-bold border transition ${currentPage === i + 1 ? 'bg-primary text-white border-primary' : 'border-stroke dark:border-strokedark text-gray-500 hover:bg-gray-50'}`}>{i + 1}</button>)}
-              <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))} className="px-2 py-1 rounded border border-stroke text-[10px] font-medium disabled:opacity-30">Next</button>
+              <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => Math.max(p - 1, 1))} className="px-2 py-1 rounded border border-stroke text-[10px] font-medium disabled:opacity-30 cursor-pointer">Previous</button>
+              {Array.from({ length: totalPages }, (_, i) => <button key={i + 1} onClick={() => setCurrentPage(i + 1)} className={`px-2 py-1 rounded text-[10px] font-bold border transition cursor-pointer ${currentPage === i + 1 ? 'bg-primary text-white border-primary' : 'border-stroke dark:border-strokedark text-gray-500 hover:bg-gray-50'}`}>{i + 1}</button>)}
+              <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))} className="px-2 py-1 rounded border border-stroke text-[10px] font-medium disabled:opacity-30 cursor-pointer">Next</button>
             </div>
           )}
         </div>
-
       </div>
     </div>
   );
