@@ -289,7 +289,7 @@ const AddBank = () => {
                                 <button
                                     type="submit"
                                     disabled={loading}
-                                    className="rounded bg-success py-2 px-10 font-medium text-white hover:bg-opacity-90 transition-all shadow-sm cursor-pointer text-sm"
+                                    className={`rounded ${isEditMode? 'bg-success' : 'bg-primary'} py-2 px-10 font-medium text-white hover:bg-opacity-90 transition-all shadow-sm cursor-pointer text-sm`}
                                 >
                                     {loading ? <Spinner /> : isEditMode ? 'Update Details' : 'Save Bank Account'}
                                 </button>

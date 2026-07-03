@@ -233,19 +233,20 @@ const AddChartOfAccount = () => {
                                 {/* FIXED: ALIGNED ACTION BUTTONS RIGHT AND APPLIED RED BACKGROUND FOR CANCEL */}
                                 <div className="flex justify-end gap-4 pt-4 border-t border-stroke dark:border-strokedark">
                                     <button
-                                        type="submit"
-                                        disabled={loading}
-                                        className="rounded bg-primary py-2.5 px-8 font-medium text-white hover:bg-opacity-90 transition disabled:bg-opacity-40 text-xs shadow-sm h-10 min-w-36"
-                                    >
-                                        {loading ? <Spinner /> : 'Save Record'}
-                                    </button>
-                                    <button
                                         type="button"
                                         onClick={() => navigate('/Registration/Chart of Account/List')}
                                         className="rounded bg-danger py-2.5 px-8 font-medium text-white hover:bg-opacity-90 transition text-xs shadow-sm h-10 min-w-36"
                                     >
                                         Cancel
                                     </button>
+                                    <button
+                                        type="submit"
+                                        disabled={loading}
+                                        className="rounded bg-primary py-2.5 px-8 font-medium text-white hover:bg-opacity-90 transition disabled:bg-opacity-40 text-xs shadow-sm h-10 min-w-36"
+                                    >
+                                        {loading ? <Spinner /> : 'Save Record'}
+                                    </button>
+
                                 </div>
 
                             </Form>

@@ -38,6 +38,7 @@ import OpeningStockList from '../pages/Registration/Opening Stock/OpeningStockLi
 import { Component } from 'react';
 import AddInvoiceReceipt from '../pages/Registration/Invoice Receipt/AddInvoiceReceipt';
 import InvoiceReceiptList from '../pages/Registration/Invoice Receipt/InvoiceReceiptList';
+import AddMultiInvoiceReceipt from '../pages/Registration/Multi Invoice Receipt/AddMultiInvoiceReceipt';
 
 export const adminRoutes = [
   {
@@ -277,6 +278,11 @@ export const adminRoutes = [
   {
     path: '/Delivery-Challan/Details',
     component: <AddDeliveryChallan />,
+    hideFromSidebar: true
+  },
+  {
+    path: '/Registration/MultiInvoiceReceipt/Add',
+    component: <AddMultiInvoiceReceipt/>,
     hideFromSidebar: true
   }
 ];

@@ -31,8 +31,9 @@ const NewInvoice = () => {
     scenarioType: editData.scenario_type || '',
     dcNo: editData.dc_no || '',
     whTaxPercentage: editData.wh_tax_percentage || 0,
-    cashAmountPaid: editData.metadata?.cashAmountPaid || 0,
-    bankPayments: editData.bankPayments || [{ selectedBank: '', bankAmount: 0 }],
+    // ✅ FIXED EDITS DEFAULTS MAPPING: Hydrates state strictly from the table column keys
+    cashAmountPaid: editData.cash_amount_paid || 0,
+    bankPayments: editData.bankPayments || editData.bank_payments || [{ selectedBank: '', bankAmount: 0 }],
     items: editData.items || [{ extraDisAmt: 0, itemName: '', location: '', rp: 0, extraDiscPer: 0, mrp: 0, qty: 1, gstRate: 18, fTaxPer: 0, discAmt: 0, hsCode: '' }]
   } : {
     customerName: '',
@@ -96,7 +97,8 @@ const NewInvoice = () => {
   if (initialLoading) {
     return <div className="flex h-48 items-center justify-center"><Spinner /></div>;
   }
-  return (
+
+    return (
     <div className="mx-auto max-w-full">
       <div className="rounded-sm border border-stroke bg-white shadow-default dark:border-strokedark dark:bg-boxdark">
         <div className="flex items-center justify-between border-b border-stroke py-4 px-6.5 dark:border-strokedark">
@@ -139,11 +141,15 @@ const NewInvoice = () => {
             const bankPaid = values.bankPayments.reduce((acc: number, curr: any) => acc + (Number(curr.bankAmount) || 0), 0);
             const collectivePaymentPaid = cashPaid + bankPaid;
 
-            if (collectivePaymentPaid > totalNetAmt + 1) {
-              toast.error(`Validation Error: Combined payment (Rs. ${collectivePaymentPaid.toLocaleString()}) cannot exceed Net Total (Rs. ${totalNetAmt.toLocaleString()})!`);
+            // ✅ CRITICAL UX OVERPAYMENT PROTECTION GATEWAY
+            // Instantly blocks form submission if combined payments exceed the strict net invoice total
+            if (collectivePaymentPaid > totalNetAmt + 0.01) {
+              toast.error(`Validation Error: Overpayment blocked! Total entered payments (Rs. ${collectivePaymentPaid.toLocaleString()}) cannot be greater than the true Net Invoice Total (Rs. ${totalNetAmt.toLocaleString()}).`);
+              setLoading(false);
               return;
             }
 
+            // ✅ BULLETPROOF STATUS SWITCH ENGINE: Evaluates cashPaid fields alongside wire records
             let computedPaymentTerm = 'On Credit';
             let computedSaleStatus = 'Unpaid';
 
@@ -155,9 +161,6 @@ const NewInvoice = () => {
               computedPaymentTerm = 'On Credit';
             }
 
-            // ✅ FIXED DATABASE PAYLOAD:
-            // Completely dropped 'metadata' from the database call to resolve schema cache rejections.
-            // The cash value is cleanly preserved in memory during the transaction stream lifecycle.
             const databasePayload = {
               customer_name: values.customerName,
               sale_status: computedSaleStatus,
@@ -168,7 +171,8 @@ const NewInvoice = () => {
               bankPayments: values.bankPayments.filter((p: any) => (Number(p.bankAmount) || 0) > 0),
               total_amount: totalNetAmt,
               items: values.items,
-              dc_no: values.dcNo
+              dc_no: values.dcNo,
+              cash_amount_paid: cashPaid
             };
 
             try {
@@ -262,8 +266,8 @@ const NewInvoice = () => {
                       onChange={handleChange}
                       value={values.customerName}
                       className={`w-full rounded border p-2 text-sm text-black dark:text-white font-semibold outline-none transition-all ${submitAttempted && errors.customerName
-                          ? 'border-red-500 bg-red-50 dark:bg-red-950/20 text-red-900 dark:text-red-200 focus:border-red-500'
-                          : 'border-stroke dark:border-strokedark bg-white dark:bg-boxdark focus:border-primary'
+                        ? 'border-red-500 bg-red-50 dark:bg-red-950/20 text-red-900 dark:text-red-200 focus:border-red-500'
+                        : 'border-stroke dark:border-strokedark bg-white dark:bg-boxdark focus:border-primary'
                         }`}
                     >
                       <option value="">-- Select Customer --</option>
@@ -287,8 +291,8 @@ const NewInvoice = () => {
                       onChange={handleChange}
                       value={values.scenarioType}
                       className={`w-full rounded border p-2 text-sm text-black dark:text-white font-semibold outline-none transition-all ${submitAttempted && errors.scenarioType
-                          ? 'border-red-500 bg-red-50 dark:bg-red-950/20 text-red-900 dark:text-red-200 focus:border-red-500'
-                          : 'border-stroke dark:border-strokedark bg-white dark:bg-boxdark focus:border-primary'
+                        ? 'border-red-500 bg-red-50 dark:bg-red-950/20 text-red-900 dark:text-red-200 focus:border-red-500'
+                        : 'border-stroke dark:border-strokedark bg-white dark:bg-boxdark focus:border-primary'
                         }`}
                     >
                       <option value="">-- Select Scenario Type --</option>
@@ -357,8 +361,8 @@ const NewInvoice = () => {
                                     onChange={(e) => handleProductSelection(e.target.value, index, setFieldValue)}
                                     value={item.itemName}
                                     className={`w-full px-1 py-1 exam border rounded text-xs transition-all ${hasItemError
-                                        ? 'border-red-500 bg-red-50 dark:bg-red-950/20 text-red-900 dark:text-red-200 focus:border-red-500'
-                                        : 'border-stroke dark:border-strokedark bg-white dark:bg-boxdark text-black dark:text-white focus:border-primary'
+                                      ? 'border-red-500 bg-red-50 dark:bg-red-950/20 text-red-900 dark:text-red-200 focus:border-red-500'
+                                      : 'border-stroke dark:border-strokedark bg-white dark:bg-boxdark text-black dark:text-white focus:border-primary'
                                       }`}
                                   >
                                     <option value="" className="text-gray-400">-- Choose Item --</option>

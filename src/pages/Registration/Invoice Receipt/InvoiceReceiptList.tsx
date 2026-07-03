@@ -54,6 +54,7 @@ function InvoiceReceiptList() {
       setLoading(false);
     }
   };
+
   const filteredReceipts = receipts.filter((r) =>
     r.voucher_no?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     r.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -71,20 +72,28 @@ function InvoiceReceiptList() {
   }, [searchTerm, pageSize]);
 
   return (
-    <div className="mx-auto max-w-7xl flex flex-col gap-6 relative text-xs">
-      <div className="flex items-center justify-between">
+    <div className="mx-auto max-w-7xl flex flex-col gap-6 relative text-xs text-textColor">
+      <div className="flex flex-col sm:flex-row justify-between items-center pb-4 border-b border-stroke dark:border-strokedark gap-4">
         <h2 className="text-xl font-bold text-black dark:text-white flex items-center gap-2">
-           Invoice Receipts Directory Logs
+          Invoice Receipts Directory Logs
         </h2>
-        <button
-          type="button"
-          onClick={() => navigate('/Registration/InvoiceReceipt/Add')}
-          className="flex items-center justify-center rounded bg-success py-2 px-4 text-sm font-medium text-white hover:bg-opacity-90 transition duration-150 shadow-sm cursor-pointer"
-        >
-          + Process Customer Payment
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => navigate('/Registration/MultiInvoiceReceipt/Add')}
+            className="flex items-center justify-center rounded bg-success py-2 px-4 text-sm font-medium text-white hover:bg-opacity-90 transition duration-150 shadow-sm cursor-pointer"
+          >
+            + Process Bulk Multi-Invoice
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/Registration/InvoiceReceipt/Add')}
+            className="flex items-center justify-center rounded bg-primary py-2 px-4 text-sm font-medium text-white hover:bg-opacity-90 transition duration-150 shadow-sm cursor-pointer"
+          >
+            + Clear Single Invoice
+          </button>
+        </div>
       </div>
-
       <div className="rounded-sm border border-stroke bg-white shadow-default dark:border-strokedark dark:bg-boxdark p-6">
         <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-4">
           <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
@@ -121,7 +130,7 @@ function InvoiceReceiptList() {
               {loading ? (
                 <tr><td colSpan={8} className="text-center py-12"><Spinner /></td></tr>
               ) : paginatedReceipts.length === 0 ? (
-                <tr><td colSpan={8} className="text-center py-10 text-gray-400">No client invoice payment receipts documented in active logs.</td></tr>
+                <tr><td colSpan={8} className="text-center py-10 text-gray-400 select-none">No client invoice payment receipts documented in active logs.</td></tr>
               ) : (
                 paginatedReceipts.map((r, idx) => {
                   const serialNumber = startIndex + idx + 1;

@@ -11,7 +11,7 @@ function AddVoucher() {
   const location = useLocation();
   const [loading, setLoading] = useState(false);
   const [metadataLoading, setMetadataLoading] = useState(true);
-  
+
   const [accountList, setAccountList] = useState<any[]>([]);
   const [salesmanList, setSalesmanList] = useState<any[]>([]);
 
@@ -24,7 +24,7 @@ function AddVoucher() {
         setMetadataLoading(true);
         const { data: coaData } = await supabase.from('chart_of_accounts').select('account_code, account_title');
         const { data: smData } = await supabase.from('salesmen').select('id, name');
-        
+
         if (coaData) setAccountList(coaData);
         if (smData) setSalesmanList(smData);
       } catch (err: any) {
@@ -191,10 +191,10 @@ function AddVoucher() {
                                 <input type="text" name={`items.${idx}.description`} onChange={handleChange} value={item.description} className="w-full px-2 outline-none bg-transparent h-8 text-black dark:text-white" placeholder="Enter line details" />
                               </td>
                               <td className="p-1 border">
-                                <input type="number" name={`items.${idx}.debit`} onKeyDown={blockInvalidChar} onChange={(e) => { handleChange(e); if(Number(e.target.value) > 0) setFieldValue(`items.${idx}.credit`, 0); }} value={item.debit} className="w-full text-center font-mono font-bold outline-none h-8 bg-transparent text-black dark:text-white" placeholder="0.00" />
+                                <input type="number" name={`items.${idx}.debit`} onKeyDown={blockInvalidChar} onChange={(e) => { handleChange(e); if (Number(e.target.value) > 0) setFieldValue(`items.${idx}.credit`, 0); }} value={item.debit} className="w-full text-center font-mono font-bold outline-none h-8 bg-transparent text-black dark:text-white" placeholder="0.00" />
                               </td>
                               <td className="p-1 border">
-                                <input type="number" name={`items.${idx}.credit`} onKeyDown={blockInvalidChar} onChange={(e) => { handleChange(e); if(Number(e.target.value) > 0) setFieldValue(`items.${idx}.debit`, 0); }} value={item.credit} className="w-full text-center font-mono font-bold outline-none h-8 bg-transparent text-black dark:text-white" placeholder="0.00" />
+                                <input type="number" name={`items.${idx}.credit`} onKeyDown={blockInvalidChar} onChange={(e) => { handleChange(e); if (Number(e.target.value) > 0) setFieldValue(`items.${idx}.debit`, 0); }} value={item.credit} className="w-full text-center font-mono font-bold outline-none h-8 bg-transparent text-black dark:text-white" placeholder="0.00" />
                               </td>
                               <td className="p-2 border text-center">
                                 {values.items.length > 2 && (
@@ -226,11 +226,11 @@ function AddVoucher() {
                 </div>
 
                 <div className="flex justify-end gap-4 pt-4 border-t border-stroke dark:border-strokedark">
-                  <button type="submit" disabled={loading} className="rounded bg-primary py-2.5 px-8 font-medium text-white hover:bg-opacity-90 transition text-xs shadow-sm h-10 min-w-36">
-                    {loading ? <Spinner /> : isEditMode ? 'Update Record' : 'Add Record'}
-                  </button>
                   <button type="button" onClick={() => navigate('/Registration/Vouchers/List')} className="rounded bg-danger py-2.5 px-8 font-medium text-white hover:bg-opacity-90 transition text-xs shadow-sm h-10 min-w-36">
                     Cancel
+                  </button>
+                  <button type="submit" disabled={loading} className={`rounded ${isEditMode? 'bg-success' : 'bg-primary'} py-2.5 px-8 font-medium text-white hover:bg-opacity-90 transition text-xs shadow-sm h-10 min-w-36`}>
+                    {loading ? <Spinner /> : isEditMode ? 'Update Record' : 'Add Record'}
                   </button>
                 </div>
               </Form>

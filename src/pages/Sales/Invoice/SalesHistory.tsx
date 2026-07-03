@@ -195,6 +195,7 @@ const SalesHistory = () => {
                         <span className={`text-xs font-semibold uppercase ${inv.receipt_status === 'Paid' ? 'text-success' : 'text-danger'}`}>
                           {inv.receipt_status || 'Unpaid'}
                         </span>
+
                       </td>
                       <td className="py-3.5 px-4">
                         <span className={`font-medium ${inv.fbr_fiscal_number ? 'text-success' : 'text-danger'}`}>
@@ -213,10 +214,18 @@ const SalesHistory = () => {
                             <div className={`absolute right-0 z-99999 w-44 rounded border border-stroke bg-white py-1 shadow-2xl dark:border-strokedark dark:bg-boxdark text-left ${paginatedInvoices.indexOf(inv) >= paginatedInvoices.length - 2 && paginatedInvoices.length > 1 ? 'bottom-full mb-1' : 'top-full mt-1'}`} onClick={(e) => e.stopPropagation()} >
                               <ul className="flex flex-col text-xs font-medium text-gray-700 dark:text-gray-300">
                                 <li>
-                                  <button onClick={() => { setOpenActionId(null); navigate(`/sales/return/${inv.id}`); }} className="flex items-center gap-2.5 w-full px-4 py-2 hover:bg-gray-100 dark:hover:bg-meta-4 transition text-left border-b border-stroke dark:border-strokedark text-blue-500" >
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setOpenActionId(null);
+                                      navigate('/Sales-Return/Debit-Notes/Add', { state: { invoice: inv } });
+                                    }}
+                                    className="flex items-center gap-2.5 w-full px-4 py-2 hover:bg-gray-100 dark:hover:bg-meta-4 transition text-left border-b border-stroke dark:border-strokedark text-blue-500 cursor-pointer"
+                                  >
                                     <FiRotateCcw size={14} className="shrink-0" /> Sale Return
                                   </button>
                                 </li>
+
                                 <li>
                                   <button disabled={!!inv.fbr_fiscal_number} onClick={() => { setOpenActionId(null); navigate('/sales/invoice/add', { state: { invoice: inv } }); }} className="flex items-center gap-2.5 w-full px-4 py-2 hover:bg-gray-100 dark:hover:bg-meta-4 transition text-left text-yellow-600 disabled:opacity-30 disabled:hover:bg-transparent" >
                                     <FiEdit size={14} className="shrink-0" /> Edit Record
