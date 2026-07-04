@@ -10,7 +10,6 @@ const ProductList = () => {
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Datatable filter and pagination layout control states
   const [searchTerm, setSearchTerm] = useState('');
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
@@ -22,13 +21,35 @@ const ProductList = () => {
   const fetchInventoryProducts = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      const { data: baseProducts, error } = await supabase
         .from('products')
         .select('*')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setProducts(data || []);
+
+      if (baseProducts) {
+        const structuralSumPromises = baseProducts.map(async (prod) => {
+          const { data: whRows } = await supabase
+            .from('warehouse_inventory')
+            .select('quantity')
+            .eq('product_name', prod.product_name);
+
+          const realTimeSummedStock = whRows 
+            ? whRows.reduce((sum, row) => sum + (Number(row.quantity) || 0), 0) 
+            : 0;
+
+          return {
+            ...prod,
+            current_stock: realTimeSummedStock
+          };
+        });
+
+        const unifiedProductPayload = await Promise.all(structuralSumPromises);
+        setProducts(unifiedProductPayload);
+      } else {
+        setProducts([]);
+      }
     } catch (err: any) {
       toast.error('Data Fetching Failure: ' + err.message);
     } finally {
@@ -49,14 +70,12 @@ const ProductList = () => {
     }
   };
 
-  // Filter evaluation conditions
   const filteredProducts = products.filter(p =>
     p.product_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     p.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     p.brand?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Pagination dynamic tracking bounds mathematics
   const totalEntries = filteredProducts.length;
   const totalPages = Math.ceil(totalEntries / pageSize);
   const startIndex = totalEntries === 0 ? 0 : (currentPage - 1) * pageSize;
@@ -66,11 +85,9 @@ const ProductList = () => {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, pageSize]);
-
   return (
     <div className="mx-auto max-w-7xl flex flex-col gap-6 relative">
       
-      {/* FIXED: FIXED TOP HEADER TITLE SECTION WITH RIGHT-ALIGNED + ADD NEW NAVIGATION BUTTON */}
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-black dark:text-white flex items-center gap-2">
           Product Stock Inventory
@@ -78,13 +95,12 @@ const ProductList = () => {
         <button
           type="button"
           onClick={() => navigate('/Administration/Products/Add')}
-          className="flex items-center justify-center rounded bg-primary py-2 px-4 text-sm font-medium text-white hover:bg-opacity-90 transition duration-150 shadow-sm"
+          className="flex items-center justify-center rounded bg-primary py-2 px-4 text-sm font-medium text-white hover:bg-opacity-90 transition duration-150 shadow-sm cursor-pointer"
         >
           + Add New
         </button>
       </div>
 
-      {/* MASTER DATA LIST TABLE GRID MODULE */}
       <div className="rounded-sm border border-stroke bg-white shadow-default dark:border-strokedark dark:bg-boxdark p-6">
         
         <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-4">
@@ -138,8 +154,7 @@ const ProductList = () => {
               ) : (
                 paginatedProducts.map((product, idx) => {
                   const serialNumber = startIndex + idx + 1;
-                  const isLowStock = Number(product.current_stock) <= Number(product.min_stock_alert);
-
+                  const isLowStock = Number(product.current_stock) <= Number(product.min_stock_alert || 0);
                   return (
                     <tr key={product.id} className="border-b border-stroke dark:border-strokedark hover:bg-slate-50 dark:hover:bg-meta-4/10 duration-150 text-sm">
                       <td className="py-3.5 px-4 text-black dark:text-white font-medium">{serialNumber}</td>
@@ -160,8 +175,8 @@ const ProductList = () => {
                       </td>
                       <td className="py-3.5 px-4">
                         <div className="flex items-center justify-center space-x-3.5">
-                          <button onClick={() => navigate('/Administration/Products/Add', { state: { product } })} className="text-gray-500 hover:text-primary transition p-0.5" title="Edit Product"><MdEdit size={18} /></button>
-                          <button onClick={() => handleDeleteProduct(product.id)} className="text-gray-500 hover:text-danger transition p-0.5" title="Delete Product"><MdDelete size={18} /></button>
+                          <button onClick={() => navigate('/Administration/Products/Add', { state: { product } })} className="text-gray-500 hover:text-primary transition p-0.5 cursor-pointer" title="Edit Product"><MdEdit size={18} /></button>
+                          <button onClick={() => handleDeleteProduct(product.id)} className="text-gray-500 hover:text-danger transition p-0.5 cursor-pointer" title="Delete Product"><MdDelete size={18} /></button>
                         </div>
                       </td>
                     </tr>
@@ -172,14 +187,13 @@ const ProductList = () => {
           </table>
         </div>
 
-        {/* BOTTOM NAVIGATION FOOTER */}
         <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mt-4 pt-4 border-t border-stroke dark:border-strokedark">
           <div className="text-sm text-gray-500 dark:text-gray-400">Showing {startIndex + 1} to {endIndex} of {totalEntries} entries</div>
           {totalPages > 1 && (
             <div className="flex items-center gap-1">
-              <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => Math.max(p - 1, 1))} className="px-3 py-1.5 rounded text-xs font-medium border border-stroke dark:border-strokedark hover:bg-gray-100 dark:hover:bg-meta-4 transition disabled:opacity-30">Previous</button>
-              {Array.from({ length: totalPages }, (_, i) => <button key={i + 1} onClick={() => setCurrentPage(i + 1)} className={`px-3 py-1.5 rounded text-xs border transition ${currentPage === i + 1 ? 'bg-primary text-white border-primary' : 'border-stroke dark:border-strokedark text-gray-500 hover:bg-gray-50'}`}>{i + 1}</button>)}
-              <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))} className="px-3 py-1.5 rounded text-xs font-medium border border-stroke dark:border-strokedark hover:bg-gray-100 dark:hover:bg-meta-4 transition disabled:opacity-30">Next</button>
+              <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => Math.max(p - 1, 1))} className="px-3 py-1.5 rounded text-xs font-medium border border-stroke dark:border-strokedark hover:bg-gray-100 dark:hover:bg-meta-4 transition disabled:opacity-30 cursor-pointer">Previous</button>
+              {Array.from({ length: totalPages }, (_, i) => <button key={i + 1} onClick={() => setCurrentPage(i + 1)} className={`px-3 py-1.5 rounded text-xs border transition cursor-pointer ${currentPage === i + 1 ? 'bg-primary text-white border-primary' : 'border-stroke dark:border-strokedark text-gray-500 hover:bg-gray-50'}`}>{i + 1}</button>)}
+              <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))} className="px-3 py-1.5 rounded text-xs font-medium border border-stroke dark:border-strokedark hover:bg-gray-100 dark:hover:bg-meta-4 transition disabled:opacity-30 cursor-pointer">Next</button>
             </div>
           )}
         </div>

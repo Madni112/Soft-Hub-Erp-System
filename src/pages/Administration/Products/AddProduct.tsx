@@ -293,18 +293,17 @@ const AddProduct = () => {
                 {/* CREATE FORM ACTIONS STRIP */}
                 <div className="mt-8 flex justify-end gap-3 border-t border-stroke dark:border-strokedark pt-4">
                   <button
-                    type="submit"
-                    disabled={loading}
-                    className="rounded bg-primary py-2 px-6 font-medium text-white hover:bg-opacity-90 transition disabled:bg-opacity-40 shadow-sm text-xs"
-                  >
-                    {loading ? <Spinner /> : isEditMode ? 'Update Product' : 'Save Product'}
-                  </button>
-                  <button
                     type="button"
                     onClick={() => navigate('/Administration/Products/List')}
                     className="rounded bg-danger py-2 px-6 font-medium text-white hover:bg-opacity-90 transition shadow-sm text-xs"
                   >
                     Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className={`rounded ${isEditMode ? "bg-success" : "bg-primary"} py-2 px-6 font-medium text-white hover:bg-opacity-90 transition disabled:bg-opacity-40 shadow-sm text-xs`}>
+                    {loading ? <Spinner /> : isEditMode ? 'Update Product' : 'Save Product'}
                   </button>
                 </div>
 

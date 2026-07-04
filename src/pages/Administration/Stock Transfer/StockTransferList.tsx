@@ -56,7 +56,7 @@ const StockTransferList = () => {
       
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-black dark:text-white flex items-center gap-2">
-          🔄 Internal Stock Transfers Ledger
+          Internal Stock Transfers Ledger
         </h2>
         <button
           type="button"

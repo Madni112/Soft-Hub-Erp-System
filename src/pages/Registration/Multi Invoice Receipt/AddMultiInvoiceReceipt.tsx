@@ -383,11 +383,12 @@ const AddMultiInvoiceReceipt = () => {
                                 </div>
                             </div>
 
-                            <div className="flex justify-end p-4 border-t border-stroke dark:border-strokedark">
-                                <button type="submit" disabled={loading || values.allocations.length === 0} className="bg-success text-white py-2 px-10 rounded font-semibold text-sm hover:bg-opacity-90 transition shadow-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer" >
+                            <div className="flex justify-end gap-4 pt-4 border-t border-stroke dark:border-strokedark">
+                                <button type="button" onClick={() => navigate('/Registration/InvoiceReceipt/List')} className="rounded bg-danger py-2.5 px-8 font-medium text-white hover:bg-opacity-90 transition text-xs shadow-sm h-10 min-w-36 cursor-pointer" >Cancel</button>
+                                
+                                <button type="submit" disabled={loading || values.allocations.length === 0} className="bg-primary text-white py-2 px-10 rounded font-semibold text-sm hover:bg-opacity-90 transition shadow-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer" >
                                     {loading ? <Spinner /> : 'Save Bulk Receipt'}
                                 </button>
-                                <button type="button" onClick={() => navigate('/Registration/InvoiceReceipt/List')} className="rounded bg-danger py-2.5 px-8 font-medium text-white hover:bg-opacity-90 transition text-xs shadow-sm h-10 min-w-36 cursor-pointer" >Cancel</button>
                             </div>
                         </Form>
                     )}

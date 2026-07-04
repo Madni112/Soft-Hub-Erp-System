@@ -15,6 +15,7 @@ function AddInvoiceReceipt() {
   const [bankAccounts, setBankAccounts] = useState<any[]>([]);
   const [invoiceTotal, setInvoiceTotal] = useState<number>(0);
   const [remainingBalance, setRemainingBalance] = useState<number>(0);
+  const [totalReturnedCredit, setTotalReturnedCredit] = useState<number>(0);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -55,6 +56,7 @@ function AddInvoiceReceipt() {
 
   const blockInvalidChar = (e: React.KeyboardEvent<HTMLInputElement>) =>
     ['-', 'e', 'E', '+'].includes(e.key) && e.preventDefault();
+
   const validationSchema = Yup.object().shape({
     invoiceNo: Yup.string(),
     paymentTerm: Yup.string(),
@@ -63,7 +65,59 @@ function AddInvoiceReceipt() {
     amount: Yup.number(),
     selectedBankId: Yup.string()
   });
+  const handleInstantSelect = async (invoiceId: string, values: any) => {
+    if (!invoiceId) return;
+    try {
+      const { data: invData, error } = await supabase
+        .from('sales_invoices')
+        .select('*')
+        .eq('id', Number(invoiceId))
+        .single();
 
+      if (error || !invData) {
+        toast.error('Sales invoice not found.');
+        return;
+      }
+
+      const netTotal = Number(invData.total_amount) || 0;
+      setInvoiceTotal(netTotal);
+
+      const { data: pastReceipts } = await supabase
+        .from('financial_vouchers')
+        .select('id, total_amount')
+        .eq('original_invoice_no', invoiceId)
+        .or('voucher_type.eq.Cash Receipt Voucher,voucher_type.eq.Bank Receipt Voucher');
+
+      const { data: returnRecords } = await supabase
+        .from('sales_returns')
+        .select('total_net_amount')
+        .eq('original_invoice_no', String(invoiceId));
+
+      const totalReturnedValue = returnRecords
+        ? returnRecords.reduce((sum: number, r: any) => sum + (Number(r.total_net_amount) || 0), 0)
+        : 0;
+      setTotalReturnedCredit(totalReturnedValue);
+
+      const initialInvoicePaymentsArray = invData.bankPayments || [];
+      const totalPaidAtSaleTime = initialInvoicePaymentsArray.reduce((sum: number, curr: any) => sum + (Number(curr.bankAmount) || 0), 0);
+      const currentEditId = editData?.id || null;
+      const totalPaidViaVouchers = pastReceipts ? pastReceipts.filter((r: any) => !isEditMode || r.id !== currentEditId).reduce((sum: number, r: any) => sum + (Number(r.total_amount) || 0), 0) : 0;
+
+      const netRemaining = Math.max(0, netTotal - totalPaidAtSaleTime - totalPaidViaVouchers - totalReturnedValue);
+      setRemainingBalance(netRemaining);
+
+      setSelectedInvoiceId(String(invoiceId));
+      setCustomerName(invData.customerName || invData.customer_name || 'General Client');
+      setSalesman(invData.salesman || 'General');
+      values.amount = netRemaining;
+
+      setIsDropdownOpen(false);
+      setSearchQuery('');
+      toast.success(`Invoice ID ${invoiceId} loaded!`);
+    } catch (err: any) {
+      console.error(err);
+    }
+  };
   return (
     <div className="mx-auto max-w-full text-xs">
       <div className="rounded-sm border border-stroke bg-white shadow-default dark:border-strokedark dark:bg-boxdark">
@@ -101,49 +155,6 @@ function AddInvoiceReceipt() {
                 inv.customer_name?.toLowerCase().includes(searchQuery.toLowerCase())
               );
 
-              const handleInstantSelect = async (invoiceId: string) => {
-                if (!invoiceId) return;
-                try {
-                  const { data: invData, error } = await supabase
-                    .from('sales_invoices')
-                    .select('*')
-                    .eq('id', Number(invoiceId))
-                    .single();
-
-                  if (error || !invData) {
-                    toast.error('Sales invoice not found.');
-                    return;
-                  }
-
-                  const netTotal = Number(invData.total_amount) || 0;
-                  setInvoiceTotal(netTotal);
-
-                  const { data: pastReceipts } = await supabase
-                    .from('financial_vouchers')
-                    .select('id, total_amount')
-                    .eq('original_invoice_no', invoiceId)
-                    .or('voucher_type.eq.Cash Receipt Voucher,voucher_type.eq.Bank Receipt Voucher');
-
-                  const initialInvoicePaymentsArray = invData.bankPayments || [];
-                  const totalPaidAtSaleTime = initialInvoicePaymentsArray.reduce((sum: number, curr: any) => sum + (Number(curr.bankAmount) || 0), 0);
-                  const currentEditId = editData?.id || null;
-                  const totalPaidViaVouchers = pastReceipts ? pastReceipts.filter((r: any) => !isEditMode || r.id !== currentEditId).reduce((sum: number, r: any) => sum + (Number(r.total_amount) || 0), 0) : 0;
-
-                  const netRemaining = Math.max(0, netTotal - totalPaidAtSaleTime - totalPaidViaVouchers);
-                  setRemainingBalance(netRemaining);
-
-                  setSelectedInvoiceId(String(invoiceId));
-                  setCustomerName(invData.customerName || invData.customer_name || 'General Client');
-                  setSalesman(invData.salesman || 'General');
-                  values.amount = netRemaining;
-
-                  setIsDropdownOpen(false);
-                  setSearchQuery('');
-                  toast.success(`Invoice ID ${invoiceId} loaded!`);
-                } catch (err: any) {
-                  console.error(err);
-                }
-              };
               const handleValidateAndSubmit = async () => {
                 if (!selectedInvoiceId) return toast.error('Validation Error: Original Invoice ID is missing!');
                 if (!values.receiptDate) return toast.error('Validation Error: Clearing Date field cannot be empty!');
@@ -152,7 +163,6 @@ function AddInvoiceReceipt() {
                 const enteredAmount = Number(values.amount) || 0;
                 if (enteredAmount <= 0) return toast.error('Validation Error: Payment amount must be greater than 0 PKR!');
 
-                // ✅ CRITICAL USER EXPERIENCE OVERPAYMENT PROTECTION
                 if (enteredAmount > remainingBalance) {
                   return toast.error(`Validation Error: Overpayment blocked! You entered Rs. ${enteredAmount.toLocaleString()}, but the true remaining invoice balance is only Rs. ${remainingBalance.toLocaleString()}.`);
                 }
@@ -194,8 +204,6 @@ function AddInvoiceReceipt() {
 
                   if (error) throw error;
 
-                  // ✅ AUTOMATED FRONT-END FALLBACK STATUS MUTATION
-                  // Computes target string instantly to update the source record view row
                   const netOutstandingAfterPayment = remainingBalance - cashAmt;
                   let targetStatusString = 'Partial';
                   if (netOutstandingAfterPayment <= 1) {
@@ -204,10 +212,9 @@ function AddInvoiceReceipt() {
                     targetStatusString = 'Unpaid';
                   }
 
-                  // Force-push the status updates to sales_invoices record columns
                   await supabase
                     .from('sales_invoices')
-                    .update({ receipt_status: targetStatusString }) // Change receipt_status to your exact status column name if it differs (e.g. payment_status)
+                    .update({ receipt_status: targetStatusString })
                     .eq('id', Number(selectedInvoiceId));
 
                   toast.success('Invoice receipt processed successfully!');
@@ -218,6 +225,7 @@ function AddInvoiceReceipt() {
                   setLoading(false);
                 }
               };
+
 
               return (
                 <Form className="space-y-6">
@@ -232,7 +240,7 @@ function AddInvoiceReceipt() {
                         onChange={(e) => {
                           handleChange(e);
                           if (selectedInvoiceId) {
-                            handleInstantSelect(selectedInvoiceId);
+                            handleInstantSelect(selectedInvoiceId, values);
                           }
                         }}
                         value={values.paymentTerm}
@@ -261,7 +269,7 @@ function AddInvoiceReceipt() {
                               ) : (
                                 filteredInvoiceOptions.map((inv) => (
                                   <div key={inv.id}
-                                    onClick={() => handleInstantSelect(String(inv.id))}
+                                    onClick={() => handleInstantSelect(String(inv.id), values)}
                                     className="p-2 hover:bg-primary hover:text-white rounded cursor-pointer duration-100 flex justify-between items-center text-xs text-black dark:text-white dark:hover:text-white"
                                   >
                                     <span>INV-{String(inv.id).padStart(4, '0')} - {inv.customer_name}</span>
@@ -310,9 +318,14 @@ function AddInvoiceReceipt() {
                       <label className="block text-gray-500 mb-1 font-bold uppercase text-success">Collected Payment Amount (PKR): *</label>
                       <input type="number" name="amount" onKeyDown={blockInvalidChar} onChange={handleChange} value={values.amount} className="w-full border border-stroke dark:border-strokedark rounded p-2 bg-transparent font-extrabold text-success text-sm" placeholder="0.00" />
                       {invoiceTotal > 0 && (
-                        <div className="flex flex-col gap-0.5 mt-1 text-[10px] font-medium text-gray-400">
+                        <div className="flex flex-col gap-0.5 mt-2 text-[11px] font-medium text-gray-400">
                           <p>Original Billing Full Total Worth: Rs. {invoiceTotal.toLocaleString()}</p>
-                          <p className="text-danger font-bold">Remaining Outstanding Balance: Rs. {remainingBalance.toLocaleString()}</p>
+                          {totalReturnedCredit > 0 && (
+                            <p className="p-1.5 bg-amber-50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-400 font-black rounded border border-amber-200/50 inline-block my-1 animate-pulse">
+                              ⚠️ AUDIT NOTE: Product worth Rs. {totalReturnedCredit.toLocaleString()} has been returned via active Debit Notes against this bill record!
+                            </p>
+                          )}
+                          <p className="text-danger font-bold text-xs mt-0.5">Remaining Outstanding Balance: Rs. {remainingBalance.toLocaleString()}</p>
                         </div>
                       )}
                     </div>
@@ -323,10 +336,10 @@ function AddInvoiceReceipt() {
                   </div>
 
                   <div className="flex justify-end gap-4 pt-4 border-t border-stroke dark:border-strokedark">
-                    <button type="button" onClick={handleValidateAndSubmit} className="rounded bg-success py-2.5 px-10 font-bold text-white hover:bg-opacity-90 transition text-xs shadow-sm h-10 min-w-36 cursor-pointer font-semibold" >
+                    <button type="button" onClick={() => navigate('/Registration/InvoiceReceipt/List')} className="rounded bg-danger py-2.5 px-8 font-medium text-white hover:bg-opacity-90 transition text-xs shadow-sm h-10 min-w-36 cursor-pointer" >Cancel</button>
+                    <button type="button" onClick={handleValidateAndSubmit} className={`rounded ${isEditMode ? 'bg-success' : 'bg-primary'} py-2.5 px-10 font-bold text-white hover:bg-opacity-90 transition text-xs shadow-sm h-10 min-w-36 cursor-pointer font-semibold`} >
                       {loading ? <Spinner /> : isEditMode ? 'Update Receipt' : 'Record Receipt'}
                     </button>
-                    <button type="button" onClick={() => navigate('/Registration/InvoiceReceipt/List')} className="rounded bg-danger py-2.5 px-8 font-medium text-white hover:bg-opacity-90 transition text-xs shadow-sm h-10 min-w-36 cursor-pointer" >Cancel</button>
                   </div>
                 </Form>
               );

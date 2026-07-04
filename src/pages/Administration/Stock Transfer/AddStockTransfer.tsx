@@ -24,7 +24,7 @@ const AddStockTransfer = () => {
         setMetadataLoading(true);
         const { data: locData } = await supabase.from('inventory_locations').select('id, name').order('name', { ascending: true });
         const { data: prodData } = await supabase.from('products').select('id, product_name, current_stock, uom');
-        
+
         if (locData) setLocations(locData);
         if (prodData) setProductList(prodData);
       } catch (err: any) {
@@ -35,6 +35,39 @@ const AddStockTransfer = () => {
     };
     fetchTransferMetadata();
   }, []);
+
+  const handleProductSelectionWithWarehouseBalance = async (selectedName: string, index: number, sourceWarehouse: string, setFieldValue: any) => {
+    if (!selectedName) {
+      setFieldValue(`items.${index}.itemName`, '');
+      setFieldValue(`items.${index}.availableQty`, 0);
+      return;
+    }
+
+    setFieldValue(`items.${index}.itemName`, selectedName);
+
+    try {
+      const { data: stockRecord, error } = await supabase
+        .from('warehouse_inventory')
+        .select('quantity')
+        .eq('product_name', selectedName)
+        .eq('warehouse_name', sourceWarehouse)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (stockRecord) {
+        setFieldValue(`items.${index}.availableQty`, Number(stockRecord.quantity));
+      } else {
+        const localProductMatch = productList.find(p => p.product_name === selectedName);
+        const fallbackGlobalStock = localProductMatch ? Number(localProductMatch.current_stock) : 0;
+        setFieldValue(`items.${index}.availableQty`, fallbackGlobalStock);
+      }
+    } catch (err: any) {
+      console.error(err.message);
+      const localProductMatch = productList.find(p => p.product_name === selectedName);
+      setFieldValue(`items.${index}.availableQty`, localProductMatch ? Number(localProductMatch.current_stock) : 0);
+    }
+  };
 
   const validationSchema = Yup.object().shape({
     fromLocation: Yup.string().required('Source location is mandatory'),
@@ -53,12 +86,11 @@ const AddStockTransfer = () => {
     ['-', 'e', 'E', '+'].includes(e.key) && e.preventDefault();
 
   if (metadataLoading) return <div className="flex h-48 items-center justify-center"><Spinner /></div>;
-
   return (
-    <div className="mx-auto max-w-6xl text-xs">
+    <div className="mx-auto max-w-6xl text-xs text-black dark:text-bodydark">
       <div className="rounded-sm border border-stroke bg-white shadow-default dark:border-strokedark dark:bg-boxdark">
-        
-        <div className="border-b border-stroke py-4 px-6.5 dark:border-strokedark flex justify-between items-center">
+
+        <div className="border-b border-stroke py-4 px-6.5 dark:border-stroke dark:border-strokedark flex justify-between items-center">
           <h3 className="font-semibold text-black dark:text-white text-base">
             {isEditMode ? `View Transfer Slip: ${editData.transfer_no}` : 'Initialize Multi-Warehouse Stock Transfer'}
           </h3>
@@ -75,7 +107,12 @@ const AddStockTransfer = () => {
             transferDate: editData.transfer_date || '',
             status: editData.status || 'Confirm',
             remarks: editData.remarks || '',
-            items: editData.items || [{ itemName: '', qty: 1, uom: 'Nos' }]
+            items: (editData.items || []).map((item: any) => ({
+              itemName: item.itemName || '',
+              qty: item.qty || 1,
+              uom: item.uom || 'Nos',
+              availableQty: item.availableQty || 0
+            }))
           } : {
             transferNo: `TRF-${Date.now().toString().slice(-6)}`,
             fromLocation: '',
@@ -83,7 +120,7 @@ const AddStockTransfer = () => {
             transferDate: new Date().toISOString().split('T')[0],
             status: 'Confirm',
             remarks: '',
-            items: [{ itemName: '', qty: 1, uom: 'Nos' }]
+            items: [{ itemName: '', qty: 1, uom: 'Nos', availableQty: 0 }]
           }}
           enableReinitialize={true}
           validationSchema={validationSchema}
@@ -96,23 +133,67 @@ const AddStockTransfer = () => {
             try {
               setLoading(true);
 
-              // LOOP LOCK VALIDATOR: Check if source warehouse actually has enough stock before firing transaction updates
               if (values.status === 'Confirm') {
                 for (const item of values.items) {
-                  const liveProd = productList.find(p => p.product_name === item.itemName);
-                  if (liveProd && Number(liveProd.current_stock) < Number(item.qty)) {
-                    toast.error(`Insufficient Balance: "${item.itemName}" only has ${liveProd.current_stock} items left in active pool balance.`);
+                  const { data: sourceStock } = await supabase
+                    .from('warehouse_inventory')
+                    .select('quantity')
+                    .eq('product_name', item.itemName)
+                    .eq('warehouse_name', values.fromLocation)
+                    .maybeSingle();
+
+                  let availablePoolFunds = 0;
+                  if (sourceStock) {
+                    availablePoolFunds = Number(sourceStock.quantity);
+                  } else {
+                    const localMatch = productList.find(p => p.product_name === item.itemName);
+                    availablePoolFunds = localMatch ? Number(localMatch.current_stock) : 0;
+                  }
+
+                  if (availablePoolFunds < Number(item.qty)) {
+                    toast.error(`Insufficient Balance: "${item.itemName}" only has ${availablePoolFunds} items left in "${values.fromLocation}" warehouse partition.`);
                     setLoading(false);
                     return;
                   }
                 }
 
-                // BALANCING PIPELINE SCRIPT LOGS EXECUTION: Asynchronously run standard inventory adjustment queries
                 for (const item of values.items) {
-                  const liveProd = productList.find(p => p.product_name === item.itemName);
-                  if (liveProd) {
-                    const newCalculatedStockBalance = Number(liveProd.current_stock) - Number(item.qty);
-                    await supabase.from('products').update({ current_stock: newCalculatedStockBalance }).eq('id', liveProd.id);
+                  const { data: sourceStock } = await supabase
+                    .from('warehouse_inventory')
+                    .select('id, quantity')
+                    .eq('product_name', item.itemName)
+                    .eq('warehouse_name', values.fromLocation)
+                    .maybeSingle();
+
+                  if (sourceStock) {
+                    await supabase
+                      .from('warehouse_inventory')
+                      .update({ quantity: Number(sourceStock.quantity) - Number(item.qty) })
+                      .eq('id', sourceStock.id);
+                  } else {
+                    const localMatch = productList.find(p => p.product_name === item.itemName);
+                    const baseGlobalStock = localMatch ? Number(localMatch.current_stock) : 0;
+                    await supabase
+                      .from('warehouse_inventory')
+                      .insert([{ product_name: item.itemName, warehouse_name: values.fromLocation, quantity: Math.max(0, baseGlobalStock - Number(item.qty)) }]);
+                  }
+
+                  const { data: destStock } = await supabase
+                    .from('warehouse_inventory')
+                    .select('id, quantity')
+                    .eq('product_name', item.itemName)
+                    .eq('warehouse_name', values.toLocation)
+                    .maybeSingle();
+
+                  if (destStock) {
+                    await supabase
+                      .from('warehouse_inventory')
+                      .update({ quantity: Number(destStock.quantity) + Number(item.qty) })
+                      .eq('id', destStock.id);
+                  } else {
+                    await supabase
+                      .from('warehouse_inventory')
+                      .insert([{ product_name: item.itemName, warehouse_name: values.toLocation, quantity: Number(item.qty) }]);
                   }
                 }
               }
@@ -127,7 +208,7 @@ const AddStockTransfer = () => {
                 items: values.items
               };
 
-              const { error } = isEditMode 
+              const { error } = isEditMode
                 ? await supabase.from('stock_transfers').update(databasePayload).eq('id', editData.id)
                 : await supabase.from('stock_transfers').insert([databasePayload]);
 
@@ -143,46 +224,73 @@ const AddStockTransfer = () => {
         >
           {({ handleChange, values, errors, touched, setFieldValue }) => (
             <Form className="p-6.5 space-y-6">
-              
-              {/* HEADER PARAMS LAYOUT FIELDS INPUT ROWS */}
+
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
-                  <label className="block text-gray-500 mb-1 font-medium">Transfer Document #:</label>
+                  <label className="block text-gray-500 dark:text-gray-400 mb-1 font-medium">Transfer Document #:</label>
                   <input type="text" name="transferNo" readOnly value={values.transferNo} className="w-full border border-stroke dark:border-strokedark rounded p-2 bg-gray-50 dark:bg-meta-4/10 font-bold font-mono text-primary outline-none" />
                 </div>
                 <div>
-                  <label className="block text-gray-500 mb-1 font-medium">Source Warehouse (From): *</label>
-                  <select name="fromLocation" disabled={isEditMode} onChange={handleChange} value={values.fromLocation} className={`w-full border rounded p-2 bg-transparent outline-none ${touched.fromLocation && errors.fromLocation ? 'border-red-500' : 'border-stroke dark:border-strokedark'}`}>
-                    <option value="" className="bg-white dark:bg-boxdark font-semibold text-black dark:text-white text-xs normal-case tracking-normal py-1">Select Departure Point</option>
-                    {locations.map(l => <option key={l.id} value={l.name} className="bg-white dark:bg-boxdark font-semibold text-black dark:text-white text-xs normal-case tracking-normal py-1">{l.name}</option>)}
+                  <label className="block text-gray-500 dark:text-gray-400 mb-1 font-medium">Source Warehouse (From): *</label>
+                  <select
+                    name="fromLocation"
+                    disabled={isEditMode}
+                    value={values.fromLocation}
+                    onChange={async (e) => {
+                      const selectedWH = e.target.value;
+                      setFieldValue('fromLocation', selectedWH);
+                      if (values.items && values.items.length > 0) {
+                        for (let idx = 0; idx < values.items.length; idx++) {
+                          const rowItem = values.items[idx];
+                          if (rowItem.itemName) {
+                            const { data: stockRecord } = await supabase
+                              .from('warehouse_inventory')
+                              .select('quantity')
+                              .eq('product_name', rowItem.itemName)
+                              .eq('warehouse_name', selectedWH)
+                              .maybeSingle();
+
+                            if (stockRecord) {
+                              setFieldValue(`items.${idx}.availableQty`, Number(stockRecord.quantity));
+                            } else {
+                              const globalProd = productList.find(p => p.product_name === rowItem.itemName);
+                              setFieldValue(`items.${idx}.availableQty`, globalProd ? Number(globalProd.current_stock) : 0);
+                            }
+                          }
+                        }
+                      }
+                    }}
+                    className={`w-full rounded border p-2 bg-transparent outline-none text-black dark:text-white font-semibold focus:border-primary ${touched.fromLocation && errors.fromLocation ? 'border-red-500' : 'border-stroke dark:border-strokedark'}`}
+                  >
+                    <option value="" className="bg-white dark:bg-boxdark font-semibold text-black dark:text-white text-xs py-1">Select Departure Point</option>
+                    {locations.map(l => <option key={l.id} value={l.name} className="bg-white dark:bg-boxdark font-semibold text-black dark:text-white text-xs py-1">{l.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-gray-500 mb-1 font-medium">Destination Warehouse (To): *</label>
-                  <select name="toLocation" disabled={isEditMode} onChange={handleChange} value={values.toLocation} className={`w-full border rounded p-2 bg-transparent outline-none ${touched.toLocation && errors.toLocation ? 'border-red-500' : 'border-stroke dark:border-strokedark'}`}>
-                    <option value="" className="bg-white dark:bg-boxdark font-semibold text-black dark:text-white text-xs normal-case tracking-normal py-1">Select Receiving Destination</option>
-                    {locations.map(l => <option key={l.id} value={l.name} className="bg-white dark:bg-boxdark font-semibold text-black dark:text-white text-xs normal-case tracking-normal py-1">{l.name}</option>)}
+                  <label className="block text-gray-500 dark:text-gray-400 mb-1 font-medium">Destination Warehouse (To): *</label>
+                  <select name="toLocation" disabled={isEditMode} onChange={handleChange} value={values.toLocation} className={`w-full rounded border p-2 bg-transparent outline-none text-black dark:text-white font-semibold focus:border-primary ${touched.toLocation && errors.toLocation ? 'border-red-500' : 'border-stroke dark:border-strokedark'}`}>
+                    <option value="" className="bg-white dark:bg-boxdark font-semibold text-black dark:text-white text-xs py-1">Select Receiving Destination</option>
+                    {locations.map(l => <option key={l.id} value={l.name} className="bg-white dark:bg-boxdark font-semibold text-black dark:text-white text-xs py-1">{l.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-gray-500 mb-1 font-medium">Transfer Date: *</label>
-                  <input type="date" name="transferDate" disabled={isEditMode} onChange={handleChange} value={values.transferDate} className="w-full border border-stroke dark:border-strokedark rounded p-2 bg-transparent outline-none font-bold" />
+                  <label className="block text-gray-500 dark:text-gray-400 mb-1 font-medium">Transfer Date: *</label>
+                  <input type="date" name="transferDate" disabled={isEditMode} onChange={handleChange} value={values.transferDate} className="w-full border border-stroke dark:border-strokedark rounded p-2 bg-transparent outline-none font-bold text-black dark:text-white focus:border-primary" />
                 </div>
               </div>
 
-              {/* PRODUCT DISPATCH LOGS FIELD ARRAY MATRIX GRID */}
               <div className="border border-stroke dark:border-strokedark rounded p-4">
                 <h4 className="font-bold text-primary text-xs uppercase tracking-wide mb-3">Transferred Product Lines Matrix</h4>
-                
+
                 <table className="w-full border-collapse border border-stroke dark:border-strokedark text-center">
                   <thead>
-                    <tr className="bg-gray-100 dark:bg-meta-4 font-bold">
-                      <th className="p-2 border w-12">S#</th>
-                      <th className="p-2 border text-left">Select Product Item Designation Label</th>
-                      <th className="p-2 border w-36">Live Available WH Bal</th>
-                      <th className="p-2 border w-28">UOM</th>
-                      <th className="p-2 border w-32">Transfer Qty</th>
-                      <th className="p-2 border w-12"></th>
+                    <tr className="bg-gray-100 dark:bg-meta-4 font-bold text-black dark:text-white text-xs uppercase border-b border-stroke dark:border-strokedark">
+                      <th className="p-2 border border-stroke dark:border-strokedark w-12">S#</th>
+                      <th className="p-2 border border-stroke dark:border-strokedark text-left">Select Product Item Designation Label</th>
+                      <th className="p-2 border border-stroke dark:border-strokedark w-36">Live Available WH Bal</th>
+                      <th className="p-2 border border-stroke dark:border-strokedark w-28">UOM</th>
+                      <th className="p-2 border border-stroke dark:border-strokedark w-32">Transfer Qty</th>
+                      <th className="p-2 border border-stroke dark:border-strokedark w-12"></th>
                     </tr>
                   </thead>
                   <FieldArray name="items">
@@ -190,46 +298,45 @@ const AddStockTransfer = () => {
                       <tbody>
                         {values.items.map((item: any, index: number) => {
                           const matchedProdObject = productList.find(p => p.product_name === item.itemName);
-                          const currentLiveSystemBalance = matchedProdObject ? matchedProdObject.current_stock : 0;
                           const currentUomString = matchedProdObject ? matchedProdObject.uom : 'Nos';
 
                           return (
-                            <tr key={index} className="bg-white dark:bg-boxdark text-xs">
-                              <td className="p-2 border font-medium text-black dark:text-white">{index + 1}</td>
-                              <td className="p-2 border">
-                                <select 
+                            <tr key={index} className="bg-white dark:bg-boxdark text-xs border-b border-stroke dark:border-strokedark text-black dark:text-white">
+                              <td className="p-2 border border-stroke dark:border-strokedark font-medium">{index + 1}</td>
+                              <td className="p-2 border border-stroke dark:border-strokedark">
+                                <select
                                   name={`items.${index}.itemName`}
                                   disabled={isEditMode}
                                   value={item.itemName}
                                   onChange={(e) => {
-                                    handleChange(e);
+                                    handleProductSelectionWithWarehouseBalance(e.target.value, index, values.fromLocation, setFieldValue);
                                     const selectObj = productList.find(p => p.product_name === e.target.value);
                                     if (selectObj) setFieldValue(`items.${index}.uom`, selectObj.uom || 'Nos');
                                   }}
-                                  className={`w-full rounded border p-2 bg-transparent outline-none focus:border-primary font-bold text-black dark:text-white border-stroke dark:border-strokedark`}
+                                  className="w-full rounded border p-2 bg-transparent outline-none focus:border-primary font-bold text-black dark:text-white border-stroke dark:border-strokedark"
                                 >
-                                  <option value="" className="bg-white dark:bg-boxdark font-semibold text-black dark:text-white text-xs normal-case tracking-normal py-1">Pick Product</option>
-                                  {productList.map(p => <option key={p.id} value={p.product_name} className="bg-white dark:bg-boxdark font-semibold text-black dark:text-white text-xs normal-case tracking-normal py-1">{p.product_name}</option>)}
+                                  <option value="" className="bg-white dark:bg-boxdark font-semibold text-black dark:text-white text-xs py-1">Pick Product</option>
+                                  {productList.map(p => <option key={p.id} value={p.product_name} className="bg-white dark:bg-boxdark font-semibold text-black dark:text-white text-xs py-1">{p.product_name}</option>)}
                                 </select>
                               </td>
-                              <td className="p-2 border font-bold text-success font-mono">
-                                {Number(currentLiveSystemBalance).toLocaleString()}
+                              <td className="p-2 border border-stroke dark:border-strokedark font-bold text-success font-mono text-center w-36 text-sm">
+                                {Number(item.availableQty || 0).toLocaleString()}
                               </td>
-                              <td className="p-2 border text-gray-400 font-semibold">{currentUomString}</td>
-                              <td className="p-2 border">
-                                <input 
-                                  type="number" 
+                              <td className="p-2 border border-stroke dark:border-strokedark text-gray-400 font-semibold w-28 uppercase">{currentUomString}</td>
+                              <td className="p-2 border border-stroke dark:border-strokedark w-32">
+                                <input
+                                  type="number"
                                   name={`items.${index}.qty`}
                                   disabled={isEditMode}
                                   onKeyDown={blockInvalidChar}
                                   onChange={handleChange}
                                   value={item.qty}
-                                  className="w-full text-center outline-none border border-stroke rounded p-1 font-bold text-black dark:text-white bg-transparent focus:border-primary"
+                                  className="w-full text-center outline-none border border-stroke rounded p-1 font-bold text-black dark:text-white bg-transparent focus:border-primary dark:border-strokedark"
                                 />
                               </td>
-                              <td className="p-2 border text-center">
-                                {!isEditMode && (
-                                  <button type="button" onClick={() => remove(index)} className="text-red-500 font-bold hover:scale-110 duration-100">✕</button>
+                              <td className="p-2 border border-stroke dark:border-strokedark text-center w-12">
+                                {!isEditMode && values.items.length > 1 && (
+                                  <button type="button" onClick={() => remove(index)} className="text-red-500 font-bold hover:scale-110 duration-100 cursor-pointer">✕</button>
                                 )}
                               </td>
                             </tr>
@@ -237,8 +344,8 @@ const AddStockTransfer = () => {
                         })}
                         {!isEditMode && (
                           <tr>
-                            <td colSpan={6} className="p-2 text-left">
-                              <button type="button" onClick={() => push({ itemName: '', qty: 1, uom: 'Nos' })} className="text-success font-bold hover:underline">+ Append Item Row</button>
+                            <td colSpan={6} className="p-2 text-left bg-gray-50/10">
+                              <button type="button" onClick={() => push({ itemName: '', qty: 1, uom: 'Nos', availableQty: 0 })} className="text-success font-bold hover:underline cursor-pointer">+ Append Item Row</button>
                             </td>
                           </tr>
                         )}
@@ -248,36 +355,44 @@ const AddStockTransfer = () => {
                 </table>
               </div>
 
-              {/* REMARKS EXPLANATORY STRIP INPUT CELL */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
                 <div className="md:col-span-3">
-                  <label className="block text-gray-500 mb-1 font-medium">Transaction Remarks / Internal Tracking Notes:</label>
-                  <input type="text" name="remarks" disabled={isEditMode} onChange={handleChange} value={values.remarks} className="w-full border border-stroke dark:border-strokedark rounded p-2.5 bg-transparent outline-none focus:border-primary" placeholder="Enter reason description details (e.g. Shifting 40L cylinder stock reserves to commercial retail shop terminal counter 1)" />
+                  <label className="block text-gray-500 dark:text-gray-400 mb-1 font-medium">Transaction Remarks / Internal Tracking Notes:</label>
+                  <input type="text" name="remarks" disabled={isEditMode} onChange={handleChange} value={values.remarks} className="w-full border border-stroke dark:border-strokedark rounded p-2.5 bg-transparent outline-none focus:border-primary text-black dark:text-white" placeholder="Enter reason description details..." />
                 </div>
                 <div>
-                  <label className="block text-gray-500 mb-1 font-medium">Slip State:</label>
-                  <select name="status" disabled={isEditMode} onChange={handleChange} value={values.status} className="w-full border border-stroke dark:border-strokedark rounded p-2.5 bg-transparent font-bold text-primary">
+                  <label className="block text-gray-500 dark:text-gray-400 mb-1 font-medium">Slip State:</label>
+                  <select name="status" disabled={isEditMode} onChange={handleChange} value={values.status} className="w-full border border-stroke dark:border-strokedark rounded p-2.5 bg-transparent font-bold text-primary dark:bg-boxdark">
                     <option value="Confirm">Confirm (Deduct & Transfer Instantly)</option>
                     <option value="Draft">Draft (Save Layout Only)</option>
                   </select>
                 </div>
               </div>
 
-              {/* ACTION FOOTER EXECUTION ROW BAR CONTROL */}
-              <div className="pt-4 border-t border-stroke dark:border-strokedark flex justify-end gap-3">
+              {/* ✅ MODIFIED RIGHT-ALIGNED BUTTON ROW CONTAINER */}
+              <div className="pt-4 mt-4 border-t border-stroke dark:border-strokedark flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => navigate('/Administration/StockTransfer/List')}
+                  className="bg-danger text-white py-2 px-8 rounded font-medium hover:bg-opacity-90 transition shadow-sm cursor-pointer"
+                >
+                  {isEditMode ? 'Close View' : 'Cancel'}
+                </button>
                 {!isEditMode && (
-                  <button type="submit" disabled={loading} className="bg-success text-white py-2 px-10 rounded font-medium hover:bg-opacity-90 transition shadow-sm" >
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="bg-primary text-white py-2 px-10 rounded font-medium hover:bg-opacity-90 transition shadow-sm cursor-pointer"
+                  >
                     {loading ? <Spinner /> : 'Dispatch Stock'}
                   </button>
                 )}
-                <button type="button" onClick={() => navigate('/Administration/StockTransfer/List')} className="bg-danger text-white py-2 px-8 rounded font-medium hover:bg-opacity-90 transition shadow-sm" >
-                  {isEditMode ? 'Close View' : 'Cancel'}
-                </button>
               </div>
 
             </Form>
           )}
         </Formik>
+
 
       </div>
     </div>

@@ -68,16 +68,22 @@ const SalesHistory = () => {
     if (!window.confirm('Are you certain you want to permanently delete this invoice record?')) return;
 
     try {
+      setLoading(true);
+
       const { data: targetInvoice, error: fetchError } = await supabase
         .from('sales_invoices')
-        .select('items')
+        .select('items, dispatch_warehouse')
         .eq('id', id)
         .single();
 
       if (fetchError) throw fetchError;
 
       if (targetInvoice && targetInvoice.items) {
+        const sourceWarehousePartition = targetInvoice.dispatch_warehouse || '';
+
         for (const item of targetInvoice.items) {
+          const itemQuantityToRestore = Number(item.qty) || 0;
+
           const { data: currentProduct } = await supabase
             .from('products')
             .select('current_stock')
@@ -85,27 +91,57 @@ const SalesHistory = () => {
             .single();
 
           if (currentProduct) {
-            const restoredStockCount = (Number(currentProduct.current_stock) || 0) + Number(item.qty || 0);
+            const restoredMasterStockCount = (Number(currentProduct.current_stock) || 0) + itemQuantityToRestore;
             await supabase
               .from('products')
-              .update({ current_stock: restoredStockCount })
+              .update({ current_stock: restoredMasterStockCount })
               .eq('product_name', item.itemName);
+          }
+
+          if (sourceWarehousePartition) {
+            const { data: localPartitionRow } = await supabase
+              .from('warehouse_inventory')
+              .select('id, quantity')
+              .eq('product_name', item.itemName)
+              .eq('warehouse_name', sourceWarehousePartition)
+              .maybeSingle();
+
+            if (localPartitionRow) {
+              const restoredPartitionStockCount = (Number(localPartitionRow.quantity) || 0) + itemQuantityToRestore;
+              await supabase
+                .from('warehouse_inventory')
+                .update({ quantity: restoredPartitionStockCount })
+                .eq('id', localPartitionRow.id);
+            } else {
+              await supabase
+                .from('warehouse_inventory')
+                .insert([{
+                  product_name: item.itemName,
+                  warehouse_name: sourceWarehousePartition,
+                  quantity: itemQuantityToRestore
+                }]);
+            }
           }
         }
       }
 
+      // 2. Perform the final deletion drop of the invoice record
       const { error: deleteError } = await supabase
         .from('sales_invoices')
         .delete()
         .eq('id', id);
 
       if (deleteError) throw deleteError;
-      toast.success('Invoice deleted and stock quantities reversed successfully.');
+
+      toast.success('Invoice deleted cleanly. Global pool and warehouse partition stock stocks restored error-free!');
       fetchInvoices();
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error('Deletion Flow Failed: ' + err.message);
+    } finally {
+      setLoading(false);
     }
   };
+
 
   const filteredInvoices = invoices.filter(inv =>
     inv.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||

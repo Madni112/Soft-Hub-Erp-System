@@ -1,4 +1,4 @@
-import { MdDashboard, MdReceipt, MdPeople, MdAdminPanelSettings, MdEmojiTransportation, MdEdit, MdInventory2, MdClass, MdAccountBox, MdCategory, MdStraighten, MdDomain, MdInventory, MdBadge, MdShoppingCart, MdLocationOn, MdLocalShipping, MdCompareArrows, MdFormatListBulleted, MdAccountTree, MdReceiptLong, MdAccountBalance } from 'react-icons/md';
+import { MdDashboard, MdReceipt, MdPeople, MdAdminPanelSettings, MdEmojiTransportation, MdEdit, MdInventory2, MdClass, MdAccountBox, MdCategory, MdStraighten, MdDomain, MdInventory, MdBadge, MdShoppingCart, MdLocationOn, MdLocalShipping, MdCompareArrows, MdFormatListBulleted, MdAccountTree, MdReceiptLong, MdAccountBalance, MdLaptop, MdLaptopChromebook, MdMan, MdRequestPage } from 'react-icons/md';
 import Dashboard from '../pages/Dashboard/Dashboard';
 import NewInvoice from '../pages/Sales/Invoice/NewInvoice';
 import SalesHistory from '../pages/Sales/Invoice/SalesHistory';
@@ -39,6 +39,12 @@ import { Component } from 'react';
 import AddInvoiceReceipt from '../pages/Registration/Invoice Receipt/AddInvoiceReceipt';
 import InvoiceReceiptList from '../pages/Registration/Invoice Receipt/InvoiceReceiptList';
 import AddMultiInvoiceReceipt from '../pages/Registration/Multi Invoice Receipt/AddMultiInvoiceReceipt';
+import AddPurchases from '../pages/Purchase/Purchase/AddPurchases';
+import PurchaseList from '../pages/Purchase/Purchase/PurchaseList';
+import VendorList from '../pages/Purchase/Vendor/VendorList';
+import AddVendor from '../pages/Purchase/Vendor/AddVendor';
+import PurchaseReceiptList from '../pages/Purchase/Purchase Receipt/PurchaseReceiptList';
+import AddPurchaseReceipt from '../pages/Purchase/Purchase Receipt/AddPurchaseReceipt';
 
 export const adminRoutes = [
   {
@@ -186,6 +192,30 @@ export const adminRoutes = [
     ],
   },
   {
+    label: 'Purchase',
+    icon: MdLaptop,
+    children:[
+      {
+        label: 'Purchases',
+        path: '/Purchase/Purchases/List',
+        component: <PurchaseList/>,
+        icon: MdLaptopChromebook
+      },
+      {
+        label: 'Vendor',
+        path: '/Purchase/Vendor/List',
+        component: <VendorList/>,
+        icon: MdMan
+      },
+      {
+        label: 'Purchase Receipt',
+        path: '/Purchase/Purchase Receipt/List',
+        component: <PurchaseReceiptList/>,
+        icon: MdRequestPage 
+      }
+    ]
+  },
+  {
     path: '/Administration/Products/Add',
     component: <AddProduct />,
     label: 'Add Product',
@@ -283,6 +313,21 @@ export const adminRoutes = [
   {
     path: '/Registration/MultiInvoiceReceipt/Add',
     component: <AddMultiInvoiceReceipt/>,
+    hideFromSidebar: true
+  },
+  {
+    path: '/Purchase/Purchases/Add',
+    component: <AddPurchases/>,
+    hideFromSidebar: true
+  },
+  {
+    path: '/Purchase/Vendor/Add',
+    component: <AddVendor/>,
+    hideFromSidebar: true
+  },
+  {
+    path: '/Purchase/Purchase Receipt/Add',
+    component: <AddPurchaseReceipt/>,
     hideFromSidebar: true
   }
 ];

@@ -342,12 +342,14 @@ const AddDeliveryChallan = () => {
               </div>
 
               {/* ===== SECTION 4: GLOBAL FORM ACTIONS FOOTER ROW CONTROLS ===== */}
-              <div className="flex items-center gap-4 border-t border-stroke pt-5 mt-4 dark:border-strokedark">
+              <div className="pt-4 mt-4 border-t border-stroke dark:border-strokedark flex justify-end gap-3">
+                <button type="button" onClick={() => navigate('/Salesman/list')} className="bg-danger text-white py-2 px-8 rounded font-medium hover:bg-opacity-90 transition shadow-sm" >
+                  Cancel
+                </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="rounded bg-success py-2.5 px-8 font-medium text-white hover:bg-opacity-90 transition disabled:bg-opacity-40 text-sm shadow-xs"
-                >
+                  className={`rounded ${isEditMode ? "bg-success" : "bg-primary"} py-2.5 px-8 font-medium text-white hover:bg-opacity-90 transition disabled:bg-opacity-40 text-sm shadow-xs`}>
                   {loading ? <Spinner /> : isEditMode ? 'Update Record' : 'Save Record'}
                 </button>
               </div>

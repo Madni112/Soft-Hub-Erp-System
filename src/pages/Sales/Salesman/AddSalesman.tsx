@@ -1,28 +1,28 @@
-import React, { useState } from 'react'; 
-import { useLocation, useNavigate } from 'react-router-dom'; 
-import { Formik, Form } from 'formik'; 
-import * as Yup from 'yup'; 
-import { supabase } from '../../../Context/supabaseClient'; 
-import { toast } from 'react-hot-toast'; 
-import Spinner from '../../../ui/Spinner'; 
+import React, { useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Formik, Form } from 'formik';
+import * as Yup from 'yup';
+import { supabase } from '../../../Context/supabaseClient';
+import { toast } from 'react-hot-toast';
+import Spinner from '../../../ui/Spinner';
 
-const AddSalesman = () => { 
-  const [loading, setLoading] = useState(false); 
-  const location = useLocation(); 
-  const navigate = useNavigate(); 
+const AddSalesman = () => {
+  const [loading, setLoading] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
 
   // Extract salesman data if passed via navigation (Edit Mode) 
-  const editData = location.state?.salesman; 
-  const isEditMode = !!editData; 
+  const editData = location.state?.salesman;
+  const isEditMode = !!editData;
 
-  const validationSchema = Yup.object().shape({ 
-    name: Yup.string().required('Salesman name is required'), 
-    phone: Yup.string().required('Phone number is required'), 
-  }); 
+  const validationSchema = Yup.object().shape({
+    name: Yup.string().required('Salesman name is required'),
+    phone: Yup.string().required('Phone number is required'),
+  });
 
-  const handleSubmit = async (values: any) => { 
-    setLoading(true); 
-    try { 
+  const handleSubmit = async (values: any) => {
+    setLoading(true);
+    try {
       // --- DYNAMIC DUPLICATE VALIDATION CHECK ENGINE ---
       // Scans database for matching name + phone combinations
       let query = supabase
@@ -46,80 +46,83 @@ const AddSalesman = () => {
         return;
       }
 
-      if (isEditMode) { 
+      if (isEditMode) {
         // UPDATE EXISTING SALESMAN 
-        const { error } = await supabase 
-          .from('salesmen') 
-          .update(values) 
-          .eq('id', editData.id); 
-        
-        if (error) throw error; 
-        toast.success('Salesman updated successfully!'); 
-        navigate('/Salesman/list'); 
-      } else { 
+        const { error } = await supabase
+          .from('salesmen')
+          .update(values)
+          .eq('id', editData.id);
+
+        if (error) throw error;
+        toast.success('Salesman updated successfully!');
+        navigate('/Salesman/list');
+      } else {
         // INSERT NEW SALESMAN 
-        const { error } = await supabase.from('salesmen').insert([values]); 
-        if (error) throw error; 
-        toast.success('Salesman registered successfully!'); 
-        navigate('/Salesman/list'); 
-      } 
-    } catch (err: any) { 
-      toast.error(err.message); 
-    } finally { 
-      setLoading(false); 
-    } 
-  }; 
+        const { error } = await supabase.from('salesmen').insert([values]);
+        if (error) throw error;
+        toast.success('Salesman registered successfully!');
+        navigate('/Salesman/list');
+      }
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  return ( 
-    <div className="mx-auto max-w-270"> 
-      <div className="rounded-sm border border-stroke bg-white shadow-default dark:border-strokedark dark:bg-boxdark"> 
-        <div className="border-b border-stroke py-4 px-6.5 dark:border-strokedark flex justify-between items-center"> 
-          <h3 className="font-medium text-black dark:text-white"> 
-            {isEditMode ? `Edit Salesman: ${editData.name}` : 'Add New Salesman'} 
-          </h3> 
-          <button 
-            onClick={() => navigate('/Salesman/list')} 
+  return (
+    <div className="mx-auto max-w-270">
+      <div className="rounded-sm border border-stroke bg-white shadow-default dark:border-strokedark dark:bg-boxdark">
+        <div className="border-b border-stroke py-4 px-6.5 dark:border-strokedark flex justify-between items-center">
+          <h3 className="font-medium text-black dark:text-white">
+            {isEditMode ? `Edit Salesman: ${editData.name}` : 'Add New Salesman'}
+          </h3>
+          <button
+            onClick={() => navigate('/Salesman/list')}
             className="text-sm text-primary hover:underline font-medium"
-          > 
-            {isEditMode ? 'Back to List' : 'See List'} 
-          </button> 
-        </div> 
+          >
+            {isEditMode ? 'Back to List' : 'See List'}
+          </button>
+        </div>
 
-        <Formik 
+        <Formik
           /* Removed email property from initial values */
-          initialValues={editData || { name: '', phone: '', area: '', commissionRate: 0 }} 
-          enableReinitialize={true} 
-          validationSchema={validationSchema} 
-          onSubmit={handleSubmit} 
-        > 
-          {({ handleChange, values, errors, touched }) => ( 
-            <Form className="p-6.5"> 
+          initialValues={editData || { name: '', phone: '', area: '', commissionRate: 0 }}
+          enableReinitialize={true}
+          validationSchema={validationSchema}
+          onSubmit={handleSubmit}
+        >
+          {({ handleChange, values, errors, touched }) => (
+            <Form className="p-6.5">
               {/* Grid columns updated to fit 3 fields cleanly without an empty email slot */}
-              <div className="grid grid-cols-1 gap-6 md:grid-cols-3"> 
-                <div> 
-                  <label className="mb-3 block text-sm font-medium text-black dark:text-white">Full Name *</label> 
-                  <input name="name" onChange={handleChange} value={values.name} className={`w-full rounded border bg-transparent text-black dark:text-white p-3 outline-none focus:border-primary ${touched.name && errors.name ? 'border-red-500' : 'border-stroke'}`} /> 
-                </div> 
-                <div> 
-                  <label className="mb-3 block text-sm font-medium text-black dark:text-white">Phone Number *</label> 
-                  <input name="phone" onChange={handleChange} value={values.phone} className={`w-full rounded border bg-transparent text-black dark:text-white p-3 outline-none focus:border-primary ${touched.phone && errors.phone ? 'border-red-500' : 'border-stroke'}`} /> 
-                </div> 
-                <div> 
-                  <label className="mb-3 block text-sm font-medium text-black dark:text-white">Assigned Area</label> 
-                  <input name="area" onChange={handleChange} value={values.area} placeholder="e.g. Hyderabad" className="w-full rounded border bg-transparent text-black dark:text-white border-stroke p-3 outline-none focus:border-primary" /> 
-                </div> 
-              </div> 
-              <div className="mt-8 flex justify-end gap-4"> 
-                <button type="submit" disabled={loading} className="flex justify-center rounded bg-primary py-2 px-10 font-medium text-white hover:bg-opacity-90 transition disabled:bg-opacity-50"> 
-                  {loading ? <Spinner /> : isEditMode ? 'Update Salesman' : 'Save Salesman'} 
-                </button> 
-              </div> 
-            </Form> 
-          )} 
-        </Formik> 
-      </div> 
-    </div> 
-  ); 
-}; 
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                <div>
+                  <label className="mb-3 block text-sm font-medium text-black dark:text-white">Full Name *</label>
+                  <input name="name" onChange={handleChange} value={values.name} className={`w-full rounded border bg-transparent text-black dark:text-white p-3 outline-none focus:border-primary ${touched.name && errors.name ? 'border-red-500' : 'border-stroke'}`} />
+                </div>
+                <div>
+                  <label className="mb-3 block text-sm font-medium text-black dark:text-white">Phone Number *</label>
+                  <input name="phone" onChange={handleChange} value={values.phone} className={`w-full rounded border bg-transparent text-black dark:text-white p-3 outline-none focus:border-primary ${touched.phone && errors.phone ? 'border-red-500' : 'border-stroke'}`} />
+                </div>
+                <div>
+                  <label className="mb-3 block text-sm font-medium text-black dark:text-white">Assigned Area</label>
+                  <input name="area" onChange={handleChange} value={values.area} placeholder="e.g. Hyderabad" className="w-full rounded border bg-transparent text-black dark:text-white border-stroke p-3 outline-none focus:border-primary" />
+                </div>
+              </div>
+              <div className="pt-4 mt-4 border-t border-stroke dark:border-strokedark flex justify-end gap-3">
+                <button type="button" onClick={() => navigate('/Salesman/list')} className="bg-danger text-white py-2 px-8 rounded font-medium hover:bg-opacity-90 transition shadow-sm" >
+                  Cancel
+                </button>
+                <button type="submit" disabled={loading} className={`flex justify-center rounded ${isEditMode ? "bg-success" : "bg-primary"} py-2 px-10 font-medium text-white hover:bg-opacity-90 transition disabled:bg-opacity-50`}>
+                  {loading ? <Spinner /> : isEditMode ? 'Update Salesman' : 'Save Salesman'}
+                </button>
+              </div>
+            </Form>
+          )}
+        </Formik>
+      </div>
+    </div>
+  );
+};
 
 export default AddSalesman;
