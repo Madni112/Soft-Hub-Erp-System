@@ -64,12 +64,12 @@ const AddBank = () => {
                     .eq('id', editData.id);
                 if (error) throw error;
                 toast.success('Account Details Updated Successfully!');
-                navigate('/Registration/Bank Account/BankAccountList');
+                navigate('/Registration/Bank-Account/BankAccountList');
             } else {
                 const { error } = await supabase.from('banks').insert([values]);
                 if (error) throw error;
                 toast.success('Bank Account Registered Successfully!');
-                navigate('/Registration/Bank Account/BankAccountList');
+                navigate('/Registration/Bank-Account/BankAccountList');
             }
         } catch (err: any) {
             toast.error(err.message);
@@ -90,14 +90,14 @@ const AddBank = () => {
 
                     {isEditMode ? (
                         <span
-                            onClick={() => navigate('/Registration/Bank Account/BankAccountList')}
+                            onClick={() => navigate('/Registration/Bank-Account/BankAccountList')}
                             className="text-sm text-primary font-medium hover:underline cursor-pointer"
                         >
                             ← Back to List
                         </span>
                     ) : (
                         <span
-                            onClick={() => navigate('/Registration/Bank Account/BankAccountList')}
+                            onClick={() => navigate('/Registration/Bank-Account/BankAccountList')}
                             className="text-sm text-primary font-medium hover:underline cursor-pointer"
                         >
                             👁 See List
@@ -281,7 +281,7 @@ const AddBank = () => {
                             <div className="mt-8 flex justify-end gap-4 border-t border-stroke pt-4 dark:border-strokedark">
                                 <button
                                     type="button"
-                                    onClick={() => navigate('/Registration/Bank Account/BankAccountList')}
+                                    onClick={() => navigate('/Registration/Bank-Account/BankAccountList')}
                                     className="rounded bg-danger py-2 px-8 font-medium text-white hover:bg-opacity-90 transition-all shadow-sm cursor-pointer text-sm"
                                 >
                                     Cancel

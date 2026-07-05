@@ -14,6 +14,7 @@ function AddPurchaseReceipt() {
 
   const [vendorOptions, setVendorOptions] = useState<any[]>([]);
   const [bankAccounts, setBankAccounts] = useState<any[]>([]);
+  const [localVendor, setLocalVendor] = useState('');
   const [totalOutstandingLiability, setTotalOutstandingLiability] = useState<number>(0);
 
   const editData = location.state?.receiptRecord;
@@ -30,9 +31,9 @@ function AddPurchaseReceipt() {
         if (bankData) setBankAccounts(bankData);
 
         if (isEditMode && editData) {
-          setTimeout(() => {
-            handleInstantVendorLookup(editData.customer_name);
-          }, 300);
+          const name = editData.customer_name || '';
+          setLocalVendor(name);
+          handleInstantVendorLookup(name);
         }
       } catch (err: any) {
         console.error(err.message);
@@ -56,7 +57,7 @@ function AddPurchaseReceipt() {
 
       const { data: pastPayments } = await supabase
         .from('financial_vouchers')
-        .select('total_amount')
+        .select('id, total_amount')
         .eq('customer_name', vendorName)
         .or('voucher_type.eq.Cash Payment Voucher,voucher_type.eq.Bank Payment Voucher');
 
@@ -85,7 +86,6 @@ function AddPurchaseReceipt() {
   };
 
   const validationSchema = Yup.object().shape({
-    vendorName: Yup.string().required('Vendor selection is mandatory'),
     voucherType: Yup.string().required('Required'),
     paymentDate: Yup.string().required('Required'),
     amount: Yup.number().typeError('Must be a number').min(1, 'Amount must be greater than 0').required('Required'),
@@ -107,7 +107,7 @@ function AddPurchaseReceipt() {
           <h3 className="font-semibold text-black dark:text-white text-base">
             {isEditMode ? 'Modify Purchase Receipt Voucher' : 'Log Vendor Outflow Purchase Receipt'}
           </h3>
-          <button type="button" onClick={() => navigate('/Purchase/Purchase Receipt/List')} className="text-sm font-medium text-primary hover:underline cursor-pointer">Back to Registry Log</button>
+          <button type="button" onClick={() => navigate('/Purchase/Purchase-Receipt/List')} className="text-sm font-medium text-primary hover:underline cursor-pointer">Back to Registry Log</button>
         </div>
 
         <div className="p-6">
@@ -115,7 +115,6 @@ function AddPurchaseReceipt() {
             initialValues={isEditMode ? {
               voucherNo: editData.voucher_no || '',
               voucherType: editData.voucher_type === 'Bank Payment Voucher' ? 'By Bank' : 'By Cash',
-              vendorName: editData.customer_name || '',
               selectedBankId: editData.metadata?.selectedBankId || '',
               paymentDate: editData.voucher_date || '',
               amount: editData.total_amount || '',
@@ -123,15 +122,18 @@ function AddPurchaseReceipt() {
             } : {
               voucherNo: `PRC-${Date.now().toString().slice(-6)}`,
               voucherType: 'By Cash',
-              vendorName: '',
               selectedBankId: '',
-              paymentDate: new Date().toISOString().split('T'),
+              paymentDate: '',
               amount: '',
               notes: ''
             }}
             enableReinitialize={true}
             validationSchema={validationSchema}
             onSubmit={async (values) => {
+              if (!localVendor) {
+                toast.error('Validation Error: Please pick a wholesale vendor account profile first!');
+                return;
+              }
               const enteredAmount = Number(values.amount) || 0;
               if (enteredAmount > totalOutstandingLiability) {
                 toast.error(`Overpayment Error: Outstanding balance due is Rs. ${totalOutstandingLiability.toLocaleString()}.`);
@@ -143,19 +145,19 @@ function AddPurchaseReceipt() {
                 const assetAccountCode = values.voucherType === 'By Cash' ? '1002001' : '1002002';
                 
                 const balancedJournalItems = [
-                  { accountCode: '2001001', description: `Settled balance due to ${values.vendorName}`, debit: enteredAmount, credit: 0 },
+                  { accountCode: '2001001', description: `Settled balance due to ${localVendor}`, debit: enteredAmount, credit: 0 },
                   { accountCode: assetAccountCode, description: `Fund drawn via ${values.voucherNo}`, debit: 0, credit: enteredAmount }
                 ];
 
                 const bankTrackingString = values.voucherType === 'By Bank' ? ` | Source Bank: ${values.selectedBankId}` : '';
-                const compositeNarration = `Paid to Vendor: ${values.vendorName} | Ref: ${values.voucherNo}${bankTrackingString} | Remarks: ${values.notes.trim()}`.trim();
+                const compositeNarration = `Paid to Vendor: ${localVendor} | Ref: ${values.voucherNo}${bankTrackingString} | Remarks: ${values.notes.trim()}`.trim();
 
                 const payload = {
                   voucher_no: values.voucherNo,
                   voucher_type: values.voucherType === 'By Cash' ? 'Cash Payment Voucher' : 'Bank Payment Voucher',
                   voucher_date: values.paymentDate,
-                  customerName: values.vendorName,
-                  customer_name: values.vendorName,
+                  customerName: localVendor,
+                  customer_name: localVendor,
                   narration: compositeNarration,
                   notes: compositeNarration,
                   total_amount: enteredAmount,
@@ -172,38 +174,8 @@ function AddPurchaseReceipt() {
 
                 if (voucherError) throw voucherError;
 
-                const { data: openPurchases } = await supabase
-                  .from('supplier_purchases')
-                  .select('id, total_amount, amount_paid')
-                  .eq('supplier_name', values.vendorName)
-                  .order('created_at', { ascending: true });
-
-                if (openPurchases) {
-                  let cashPoolLeftToAllocate = enteredAmount;
-                  
-                  for (const pur of openPurchases) {
-                    if (cashPoolLeftToAllocate <= 0) break;
-
-                    const totalAmt = Number(pur.total_amount) || 0;
-                    const currentPaid = Number(pur.amount_paid) || 0;
-                    const remainingOnThisBill = Math.max(0, totalAmt - currentPaid);
-
-                    if (remainingOnThisBill > 0) {
-                      const allocationToThisBill = Math.min(cashPoolLeftToAllocate, remainingOnThisBill);
-                      const newPaidTotalForBill = currentPaid + allocationToThisBill;
-
-                      await supabase
-                        .from('supplier_purchases')
-                        .update({ amount_paid: newPaidTotalForBill })
-                        .eq('id', pur.id);
-
-                      cashPoolLeftToAllocate -= allocationToThisBill;
-                    }
-                  }
-                }
-
-                toast.success('Purchase Receipt payment processed and supplier balances updated cleanly!');
-                navigate('/Purchase/Purchase Receipt/List');
+                toast.success('Purchase Receipt payment processed successfully!');
+                navigate('/Purchase/Purchase-Receipt/List');
               } catch (err: any) {
                 toast.error(err.message);
               } finally {
@@ -228,14 +200,14 @@ function AddPurchaseReceipt() {
                   <div>
                     <label className="block text-gray-500 mb-1 font-bold uppercase">Select Target Vendor: *</label>
                     <select
-                      name="vendorName"
-                      value={values.vendorName}
+                      value={localVendor}
                       disabled={isEditMode}
                       onChange={(e) => {
-                        handleChange(e);
-                        handleInstantVendorLookup(e.target.value);
+                        const val = e.target.value;
+                        setLocalVendor(val);
+                        handleInstantVendorLookup(val);
                       }}
-                      className={`w-full border rounded p-2.5 bg-white text-black dark:bg-boxdark dark:text-white font-bold outline-none text-xs ${touched.vendorName && errors.vendorName ? 'border-red-500' : 'border-stroke dark:border-strokedark'}`}
+                      className="w-full border border-stroke dark:border-strokedark rounded p-2.5 bg-white text-black dark:bg-boxdark dark:text-white font-bold outline-none text-xs"
                     >
                       <option value="">-- Choose Vendor Account --</option>
                       {vendorOptions.map(v => <option key={v.id} value={v.vendor_name}>{v.vendor_name}</option>)}
@@ -243,7 +215,7 @@ function AddPurchaseReceipt() {
                   </div>
                   <div>
                     <label className="block text-gray-500 mb-1 font-bold uppercase">Payment Date: *</label>
-                    <input type="date" name="paymentDate" onChange={handleChange} value={values.paymentDate} className="w-full border border-stroke dark:border-strokedark rounded p-2 bg-transparent font-bold outline-none text-black dark:text-white text-xs" />
+                    <input type="date" name="paymentDate" onChange={handleChange} value={values.paymentDate} className={`w-full border rounded p-2 bg-transparent font-bold outline-none text-black dark:text-white text-xs ${touched.paymentDate && errors.paymentDate ? 'border-red-500' : 'border-stroke dark:border-strokedark'}`} />
                   </div>
                 </div>
                 {values.voucherType === 'By Bank' && (
@@ -260,7 +232,7 @@ function AddPurchaseReceipt() {
                   <div>
                     <label className="block text-gray-500 mb-1 font-bold uppercase text-success">Transferred Amount (PKR): *</label>
                     <input type="number" name="amount" onKeyDown={blockInvalidChar} onChange={handleChange} value={values.amount} className="w-full border border-stroke dark:border-strokedark rounded p-2 bg-transparent font-black text-success text-sm placeholder-0.00" />
-                    {values.vendorName && (
+                    {localVendor && (
                       <div className="mt-2 p-2.5 bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 font-bold text-xs rounded border border-red-200/50 inline-block tracking-wide">
                         📉 Current Credit Debt Owed: <span className="underline font-black text-sm ml-1">Rs. {totalOutstandingLiability.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                       </div>
@@ -273,8 +245,18 @@ function AddPurchaseReceipt() {
                 </div>
 
                 <div className="flex justify-end gap-4 pt-4 border-t border-stroke dark:border-strokedark">
-                  <button type="button" onClick={() => navigate('/Purchase/Purchase Receipt/List')} className="rounded bg-danger py-2.5 px-8 font-medium text-white hover:bg-opacity-90 transition text-xs shadow-sm h-10 min-w-36 cursor-pointer">Cancel</button>
-                  <button type="submit" disabled={loading || !values.vendorName} className="rounded bg-primary py-2.5 px-10 font-bold text-white hover:bg-opacity-90 transition text-xs shadow-sm h-10 min-w-36 cursor-pointer font-semibold">
+                  <button 
+                    type="button" 
+                    onClick={() => navigate('/Purchase/Purchase-Receipt/List')} 
+                    className="rounded bg-[#cb3c53] py-2 px-8 font-semibold text-white hover:bg-opacity-90 transition text-xs shadow-sm h-9 min-w-32 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit" 
+                    disabled={loading || !localVendor} 
+                    className="rounded bg-primary py-2.5 px-10 font-bold text-white hover:bg-opacity-90 transition text-xs shadow-sm h-9 min-w-32 cursor-pointer font-semibold"
+                  >
                     {loading ? <Spinner /> : isEditMode ? 'Update Receipt' : 'Record Receipt'}
                   </button>
                 </div>

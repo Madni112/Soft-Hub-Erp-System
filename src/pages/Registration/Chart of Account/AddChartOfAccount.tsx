@@ -148,7 +148,7 @@ const AddChartOfAccount = () => {
           </h3>
           <button
             type="button"
-            onClick={() => navigate('/Registration/Chart of Account/List')}
+            onClick={() => navigate('/Registration/Chart-of-Account/List')}
             className="text-sm font-medium text-primary hover:underline"
           >
             Back to Directory
@@ -192,7 +192,7 @@ const AddChartOfAccount = () => {
 
               if (error) throw error;
               toast.success('Account registered successfully!');
-              navigate('/Registration/Chart of Account/List');
+              navigate('/Registration/Chart-of-Account/List');
             } catch (err: any) {
               toast.error(err.message);
             } finally {
@@ -306,7 +306,7 @@ const AddChartOfAccount = () => {
                 <div className="flex justify-end gap-4 pt-4 border-t border-stroke dark:border-strokedark">
                   <button
                     type="button"
-                    onClick={() => navigate('/Registration/Chart of Account/List')}
+                    onClick={() => navigate('/Registration/Chart-of-Account/List')}
                     className="rounded bg-danger py-2.5 px-8 font-medium text-white hover:bg-opacity-90 transition text-xs shadow-sm h-10 min-w-36 cursor-pointer"
                   >
                     Cancel

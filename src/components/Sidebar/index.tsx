@@ -334,7 +334,7 @@ const Sidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
                   />
                 ))
               }
-              <li className={`group relative flex items-center rounded-sm py-2.5 font-medium text-textColor duration-300 ease-in-out hover:bg-meta-4 dark:text-white cursor-pointer mt-4 border-t border-stroke pt-4 ${sidebarOpen ? 'justify-start px-4' : 'justify-center mx-auto w-10 h-10 px-0'}`} onClick={() => logout()} title={!sidebarOpen ? 'LogOut' : undefined} >
+              <li className={`group relative flex items-center rounded-sm py-2.5 font-medium text-textColor duration-300 ease-in-out hover:bg-meta-2 dark:hover:bg-meta-4 dark:text-white cursor-pointer mt-4 border-t border-stroke pt-4 ${sidebarOpen ? 'justify-start px-4' : 'justify-center mx-auto w-10 h-10 px-0'}`} onClick={() => logout()} title={!sidebarOpen ? 'LogOut' : undefined} >
                 <LuLogOut className="text-xl shrink-0" />
                 {(sidebarOpen || isMobile) && <span className="ml-2">LogOut</span>}
               </li>

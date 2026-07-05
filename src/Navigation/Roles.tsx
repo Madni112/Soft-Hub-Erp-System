@@ -45,6 +45,8 @@ import VendorList from '../pages/Purchase/Vendor/VendorList';
 import AddVendor from '../pages/Purchase/Vendor/AddVendor';
 import PurchaseReceiptList from '../pages/Purchase/Purchase Receipt/PurchaseReceiptList';
 import AddPurchaseReceipt from '../pages/Purchase/Purchase Receipt/AddPurchaseReceipt';
+import PurchaseReturnList from '../pages/Purchase/Purchase Return/PurchaseReturnList';
+import AddPurchaseReturn from '../pages/Purchase/Purchase Return/AddPurchaseReturn';
 
 export const adminRoutes = [
   {
@@ -124,7 +126,7 @@ export const adminRoutes = [
     icon: MdFormatListBulleted,
     children: [
       {
-        path: '/Registration/Chart of Account/List',
+        path: '/Registration/Chart-of-Account/List',
         component: <ChartOfAccountList />,
         label: 'Chart Of Account',
         icon: MdAccountTree
@@ -136,7 +138,7 @@ export const adminRoutes = [
         icon: MdReceiptLong
       },
       {
-        path: '/Registration/Bank Account/BankAccountList',
+        path: '/Registration/Bank-Account/BankAccountList',
         component: <BankAccountList />,
         label: 'Bank Account',
         icon: MdAccountBalance
@@ -202,17 +204,24 @@ export const adminRoutes = [
         icon: MdLaptopChromebook
       },
       {
+        label: 'Purchase Return',
+        path: '/Purchase/Purchase-Return/List',
+        component: <PurchaseReturnList/>,
+        icon: MdLaptopChromebook
+      },
+      {
+        label: 'Purchase Receipt',
+        path: '/Purchase/Purchase-Receipt/List',
+        component: <PurchaseReceiptList/>,
+        icon: MdRequestPage 
+      },
+      {
         label: 'Vendor',
         path: '/Purchase/Vendor/List',
         component: <VendorList/>,
         icon: MdMan
-      },
-      {
-        label: 'Purchase Receipt',
-        path: '/Purchase/Purchase Receipt/List',
-        component: <PurchaseReceiptList/>,
-        icon: MdRequestPage 
       }
+      
     ]
   },
   {
@@ -246,7 +255,7 @@ export const adminRoutes = [
     hideFromSidebar: true
   },
   {
-    path: '/Registration/Chart of Account/Add',
+    path: '/Registration/Chart-of-Account/Add',
     component: <AddChartOfAccount />,
     hideFromSidebar: true
   },
@@ -269,7 +278,7 @@ export const adminRoutes = [
     hideFromSidebar: true
   },
   {
-    path: '/Registration/Bank Account/AddBank',
+    path: '/Registration/Bank-Account/AddBank',
     component: <AddBank />,
     hideFromSidebar: true
   },
@@ -326,8 +335,13 @@ export const adminRoutes = [
     hideFromSidebar: true
   },
   {
-    path: '/Purchase/Purchase Receipt/Add',
+    path: '/Purchase/Purchase-Receipt/Add',
     component: <AddPurchaseReceipt/>,
+    hideFromSidebar: true
+  },
+  {
+    path: '/Purchase/Purchase-Return/Add',
+    component: <AddPurchaseReturn/>,
     hideFromSidebar: true
   }
 ];

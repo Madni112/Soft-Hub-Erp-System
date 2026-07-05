@@ -78,7 +78,7 @@ const ChartOfAccountList = () => {
                 </h2>
                 <button
                     type="button"
-                    onClick={() => navigate('/Registration/Chart of Account/Add')}
+                    onClick={() => navigate('/Registration/Chart-of-Account/Add')}
                     className="flex items-center justify-center rounded bg-primary py-2 px-4 text-sm font-medium text-white hover:bg-opacity-90 transition duration-150 shadow-sm"
                 >
                     + Add New Account
@@ -143,7 +143,7 @@ const ChartOfAccountList = () => {
                                             </td>
                                             <td className="py-3.5 px-4 text-center">
                                                 <div className="flex items-center justify-center space-x-3.5">
-                                                    <button type="button" onClick={() => navigate('/Registration/Chart of Account/Add', { state: { account } })} className="text-gray-500 hover:text-primary transition p-0.5"><MdEdit size={18} /></button>
+                                                    <button type="button" onClick={() => navigate('/Registration/Chart-of-Account/Add', { state: { account } })} className="text-gray-500 hover:text-primary transition p-0.5"><MdEdit size={18} /></button>
                                                     <button type="button" onClick={() => handleDeleteAccount(account.id)} className="text-gray-500 hover:text-danger transition p-0.5"><MdDelete size={18} /></button>
                                                 </div>
                                             </td>

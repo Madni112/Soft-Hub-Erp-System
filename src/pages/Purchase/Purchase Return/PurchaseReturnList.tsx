@@ -5,25 +5,25 @@ import { toast } from 'react-hot-toast';
 import Spinner from '../../../ui/Spinner';
 import { MdEdit, MdDelete, MdEvent, MdStore, MdPerson } from 'react-icons/md';
 
-const PurchaseList = () => {
+const PurchaseReturnList = () => {
   const navigate = useNavigate();
-  const [purchases, setPurchases] = useState<any[]>([]);
+  const [returns, setReturns] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
 
-  const fetchProcurementLogs = async () => {
+  const fetchReturnLogs = async () => {
     try {
       setLoading(true);
-      const { data: purData, error: purError } = await supabase
-        .from('supplier_purchases')
+      const { data, error } = await supabase
+        .from('purchase_returns')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (purError) throw purError;
-      setPurchases(purData || []);
+      if (error) throw error;
+      setReturns(data || []);
     } catch (err: any) {
       toast.error('Data Fetching Failure: ' + err.message);
     } finally {
@@ -32,45 +32,45 @@ const PurchaseList = () => {
   };
 
   useEffect(() => {
-    fetchProcurementLogs();
+    fetchReturnLogs();
   }, []);
 
-  const handleDeletePurchaseRecord = async (id: string | number) => {
-    if (!window.confirm('Are you certain you want to permanently erase this consignment registry? Shelf stock allocations will reverse!')) return;
+  const handleDeleteReturnRecord = async (id: string | number) => {
+    if (!window.confirm('Are you certain you want to permanently delete this return record note? Stock levels will add back!')) return;
 
     try {
-      const { data: targetRecord } = await supabase.from('supplier_purchases').select('items, target_warehouse').eq('id', id).single();
+      const { data: targetRecord } = await supabase.from('purchase_returns').select('items, source_warehouse').eq('id', id).single();
       
       if (targetRecord?.items) {
         for (const item of targetRecord.items) {
-          const { data: p } = await supabase.from('warehouse_inventory').select('id, quantity').eq('product_name', item.itemName).eq('warehouse_name', targetRecord.target_warehouse).maybeSingle();
+          const { data: p } = await supabase.from('warehouse_inventory').select('id, quantity').eq('product_name', item.itemName).eq('warehouse_name', targetRecord.source_warehouse).maybeSingle();
           if (p) {
-            await supabase.from('warehouse_inventory').update({ quantity: Math.max(0, Number(p.quantity) - Number(item.qty)) }).eq('id', p.id);
+            await supabase.from('warehouse_inventory').update({ quantity: Number(p.quantity) + Number(item.qty) }).eq('id', p.id);
           }
         }
       }
 
-      const { error } = await supabase.from('supplier_purchases').delete().eq('id', id);
+      const { error } = await supabase.from('purchase_returns').delete().eq('id', id);
       if (error) throw error;
 
-      toast.success('Procurement consignment record dropped and stock levels reversed safely!');
-      fetchProcurementLogs();
+      toast.success('Return note dropped and shelf inventories re-queued safely!');
+      fetchReturnLogs();
     } catch (err: any) {
       toast.error(err.message);
     }
   };
 
-  const filteredPurchases = purchases.filter(p =>
-    (p.purchase_no || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (p.supplier_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (p.target_warehouse || '').toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredReturns = returns.filter(r =>
+    (r.return_no || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (r.vendor_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (r.source_warehouse || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const totalEntries = filteredPurchases.length;
+  const totalEntries = filteredReturns.length;
   const totalPages = Math.ceil(totalEntries / pageSize);
   const startIndex = totalEntries === 0 ? 0 : (currentPage - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, totalEntries);
-  const paginatedPurchases = filteredPurchases.slice(startIndex, startIndex + pageSize);
+  const paginatedReturns = filteredReturns.slice(startIndex, startIndex + pageSize);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -80,15 +80,15 @@ const PurchaseList = () => {
       
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-black dark:text-white">Wholesale Purchase Log Registry</h2>
-          <p className="text-xs text-gray-400">Manage inward vendor supply consignments and trace batch arrivals</p>
+          <h2 className="text-xl font-bold text-black dark:text-white">Vendor Purchase Returns Registry (Debit Notes)</h2>
+          <p className="text-xs text-gray-400">Trace outbound product returns, warehouse shelf offsets and merchant credits balance lines</p>
         </div>
         <button
           type="button"
-          onClick={() => navigate('/Purchase/Purchases/Add')}
+          onClick={() => navigate('/Purchase/Purchase-Return/Add')}
           className="flex items-center justify-center rounded bg-primary py-2 px-4 text-sm font-medium text-white hover:bg-opacity-90 transition shadow-sm cursor-pointer"
         >
-          + Log New Supply
+          + Log New Return
         </button>
       </div>
 
@@ -115,7 +115,7 @@ const PurchaseList = () => {
               type="text" 
               value={searchTerm} 
               onChange={(e) => setSearchTerm(e.target.value)} 
-              placeholder="Search by order # or vendor name..." 
+              placeholder="Search by note # or vendor profile..." 
               className="w-full sm:w-64 rounded border border-stroke py-1.5 px-3 bg-transparent dark:border-strokedark outline-none text-black dark:text-white text-xs font-semibold" 
             />
           </div>
@@ -126,55 +126,48 @@ const PurchaseList = () => {
             <thead>
               <tr className="bg-gray-2 text-left dark:bg-meta-4 text-xs font-bold uppercase tracking-wider text-black dark:text-white border-b border-stroke dark:border-strokedark">
                 <th className="py-4 px-4 font-semibold w-16">S#</th>
-                <th className="py-4 px-4 font-semibold">Purchase No</th>
+                <th className="py-4 px-4 font-semibold">Return No</th>
                 <th className="py-4 px-4 font-semibold">Vendor Profile</th>
-                <th className="py-4 px-4 font-semibold">Stock Receiving Location</th>
-                <th className="py-4 px-4 font-semibold text-center">Entry Date</th>
-                <th className="py-4 px-4 font-semibold text-center">Payment Term</th>
-                <th className="py-4 px-4 font-semibold text-right pr-6">Total Bill Payables</th>
+                <th className="py-4 px-4 font-semibold">Source Dispatch Location</th>
+                <th className="py-4 px-4 font-semibold text-center">Return Date</th>
+                <th className="py-4 px-4 font-semibold text-right pr-6">Total Credited Value</th>
                 <th className="py-4 px-4 font-semibold w-24 text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={8} className="text-center py-12 text-sm"><Spinner /></td></tr>
-              ) : paginatedPurchases.length === 0 ? (
-                <tr><td colSpan={8} className="text-center py-10 text-sm text-gray-500 dark:text-gray-400 italic">No supply restock logs recorded yet.</td></tr>
+                <tr><td colSpan={7} className="text-center py-12 text-sm"><Spinner /></td></tr>
+              ) : paginatedReturns.length === 0 ? (
+                <tr><td colSpan={7} className="text-center py-10 text-sm text-gray-500 dark:text-gray-400 italic">No outbound supply return records found inside the logs.</td></tr>
               ) : (
-                paginatedPurchases.map((pur, idx) => {
+                paginatedReturns.map((rtn, idx) => {
                   const serialNumber = startIndex + idx + 1;
-                  const totalAmt = Number(pur.total_amount) || 0;
-                  const term = pur.payment_term || 'On Credit';
-                  const vendorName = pur.supplier_name || 'General Vendor';
+                  const totalAmt = Number(rtn.total_amount) || 0;
+                  const vendorName = rtn.vendor_name || 'General Vendor';
 
                   return (
-                    <tr key={pur.id} className="border-b border-stroke dark:border-strokedark hover:bg-slate-50 dark:hover:bg-meta-4/10 duration-150 font-semibold text-black dark:text-white text-xs">
+                    <tr key={rtn.id} className="border-b border-stroke dark:border-strokedark hover:bg-slate-50 dark:hover:bg-meta-4/10 duration-150 font-semibold text-black dark:text-white text-xs">
                       <td className="py-3.5 px-4 text-gray-400">{serialNumber}</td>
-                      <td className="py-3.5 px-4 font-mono font-black text-primary">{pur.purchase_no}</td>
+                      <td className="py-3.5 px-4 font-mono font-black text-primary">{rtn.return_no}</td>
                       <td className="py-3.5 px-4 flex items-center gap-1.5"><MdPerson className="text-gray-400" size={16} />{vendorName}</td>
-                      <td className="py-3.5 px-4"><span className="bg-blue-50 dark:bg-meta-4 text-primary dark:text-white px-2.5 py-1 rounded-sm text-[10px] font-black uppercase tracking-wide inline-flex items-center gap-1"><MdStore size={12} />{pur.target_warehouse}</span></td>
-                      <td className="py-3.5 px-4 text-center text-gray-500"><span className="inline-flex items-center gap-1 text-[11px]"><MdEvent size={13} />{pur.purchase_date}</span></td>
-                      <td className="py-3.5 px-4 text-center">
-                        <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold border ${term === 'On Credit' ? 'bg-purple-50 text-purple-600 border-purple-200' : term === 'By Cash' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-blue-50 text-blue-600 border-blue-200'}`}>
-                          {term}
-                        </span>
-                      </td>
+                      <td className="py-3.5 px-4"><span className="bg-purple-50 dark:bg-meta-4 text-purple-600 dark:text-white px-2.5 py-1 rounded-sm text-[10px] font-black uppercase tracking-wide inline-flex items-center gap-1"><MdStore size={12} />{rtn.source_warehouse}</span></td>
+                      <td className="py-3.5 px-4 text-center text-gray-500"><span className="inline-flex items-center gap-1 text-[11px]"><MdEvent size={13} />{rtn.return_date}</span></td>
                       <td className="py-3.5 px-4 text-right font-mono font-black text-success pr-6">Rs. {totalAmt.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                       <td className="py-3.5 px-4 text-center">
                         <div className="flex items-center justify-center space-x-3.5">
                           <button
                             type="button"
-                            onClick={() => navigate('/Purchase/Purchases/Add', { state: { purchaseRecord: pur } })}
+                            onClick={() => navigate('/Purchase/Purchase-Return/Add', { state: { returnRecord: rtn } })}
                             className="text-gray-500 hover:text-primary transition duration-150 cursor-pointer"
-                            title="Edit Order"
+                            title="Edit Note"
                           >
                             <MdEdit size={18} />
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleDeletePurchaseRecord(pur.id)}
+                            onClick={() => handleDeleteReturnRecord(rtn.id)}
                             className="text-gray-500 hover:text-danger transition duration-150 cursor-pointer"
-                            title="Drop Slip"
+                            title="Delete Note"
                           >
                             <MdDelete size={18} />
                           </button>
@@ -204,4 +197,4 @@ const PurchaseList = () => {
   );
 };
 
-export default PurchaseList;
+export default PurchaseReturnList;

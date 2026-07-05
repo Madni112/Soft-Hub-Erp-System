@@ -49,7 +49,7 @@ const BankAccountList = () => {
           <MdAccountBalance className="text-primary text-2xl" /> Bank Accounts Directory
         </h4>
         <button 
-          onClick={() => navigate('/Registration/Bank Account/AddBank')}
+          onClick={() => navigate('/Registration/Bank-Account/AddBank')}
           className="bg-primary hover:bg-opacity-90 text-white font-medium py-2 px-4 rounded text-sm transition-all shadow-sm"
         >
           + Add New Bank Account
@@ -82,7 +82,7 @@ const BankAccountList = () => {
                   <td className="py-5 px-4">
                     <div className="flex items-center justify-center space-x-3.5">
                       <button 
-                        onClick={() => navigate('/Registration/Bank Account/AddBank', { state: { bank: b } })}
+                        onClick={() => navigate('/Registration/Bank-Account/AddBank', { state: { bank: b } })}
                         className="hover:text-primary transition-colors"
                         title="Edit Details"
                       >

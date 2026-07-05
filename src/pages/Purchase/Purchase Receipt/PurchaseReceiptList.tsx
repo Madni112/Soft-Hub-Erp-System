@@ -74,7 +74,7 @@ const PurchaseReceiptList = () => {
         </div>
         <button
           type="button"
-          onClick={() => navigate('/Purchase/Purchase Receipt/Add')}
+          onClick={() => navigate('/Purchase/Purchase-Receipt/Add')}
           className="flex items-center justify-center rounded bg-primary py-2 px-4 text-sm font-medium text-white hover:bg-opacity-90 transition shadow-sm cursor-pointer"
         >
           + Add Purchase Receipt
@@ -150,7 +150,7 @@ const PurchaseReceiptList = () => {
                         <div className="flex items-center justify-center space-x-3.5">
                           <button
                             type="button"
-                            onClick={() => navigate('/Purchase/Purchase Receipt/Add', { state: { receiptRecord: rcpt } })}
+                            onClick={() => navigate('/Purchase/Purchase-Receipt/Add', { state: { receiptRecord: rcpt } })}
                             className="text-gray-500 hover:text-primary transition duration-150 cursor-pointer"
                             title="Edit Record"
                           >
