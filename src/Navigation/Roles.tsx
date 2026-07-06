@@ -1,4 +1,4 @@
-import { MdDashboard, MdReceipt, MdPeople, MdAdminPanelSettings, MdEmojiTransportation, MdEdit, MdInventory2, MdClass, MdAccountBox, MdCategory, MdStraighten, MdDomain, MdInventory, MdBadge, MdShoppingCart, MdLocationOn, MdLocalShipping, MdCompareArrows, MdFormatListBulleted, MdAccountTree, MdReceiptLong, MdAccountBalance, MdLaptop, MdLaptopChromebook, MdMan, MdRequestPage } from 'react-icons/md';
+import { MdDashboard, MdReceipt, MdPeople, MdAdminPanelSettings, MdEmojiTransportation, MdEdit, MdInventory2, MdClass, MdAccountBox, MdCategory, MdStraighten, MdDomain, MdInventory, MdBadge, MdShoppingCart, MdLocationOn, MdLocalShipping, MdCompareArrows, MdFormatListBulleted, MdAccountTree, MdReceiptLong, MdAccountBalance, MdLaptop, MdLaptopChromebook, MdMan, MdRequestPage, MdOutlineRequestPage, MdPageview, MdSpaceDashboard } from 'react-icons/md';
 import Dashboard from '../pages/Dashboard/Dashboard';
 import NewInvoice from '../pages/Sales/Invoice/NewInvoice';
 import SalesHistory from '../pages/Sales/Invoice/SalesHistory';
@@ -35,7 +35,7 @@ import BankAccountList from '../pages/Registration/Bank Account/BankAccountList'
 import AddBank from '../pages/Registration/Bank Account/AddBankAccount';
 import AddOpeningStock from '../pages/Registration/Opening Stock/AddOpeningStock';
 import OpeningStockList from '../pages/Registration/Opening Stock/OpeningStockList';
-import { Component } from 'react';
+import { Children, Component } from 'react';
 import AddInvoiceReceipt from '../pages/Registration/Invoice Receipt/AddInvoiceReceipt';
 import InvoiceReceiptList from '../pages/Registration/Invoice Receipt/InvoiceReceiptList';
 import AddMultiInvoiceReceipt from '../pages/Registration/Multi Invoice Receipt/AddMultiInvoiceReceipt';
@@ -47,6 +47,9 @@ import PurchaseReceiptList from '../pages/Purchase/Purchase Receipt/PurchaseRece
 import AddPurchaseReceipt from '../pages/Purchase/Purchase Receipt/AddPurchaseReceipt';
 import PurchaseReturnList from '../pages/Purchase/Purchase Return/PurchaseReturnList';
 import AddPurchaseReturn from '../pages/Purchase/Purchase Return/AddPurchaseReturn';
+import PurchaseReturnReceiptList from '../pages/Purchase/Purchase Return Receipt/PurchaseReturnReceiptList';
+import AddPurchaseReturnReceipt from '../pages/Purchase/Purchase Return Receipt/AddPurchaseReturnReceipt';
+import ReportDashboard from '../pages/Reports/ReportDashboard';
 
 export const adminRoutes = [
   {
@@ -216,12 +219,30 @@ export const adminRoutes = [
         icon: MdRequestPage 
       },
       {
+        label: 'Purchase Return Receipt',
+        path: '/Purchase/Purchase-Return-Receipt/List',
+        component: <PurchaseReturnReceiptList/>,
+        icon: MdOutlineRequestPage
+      },
+      {
         label: 'Vendor',
         path: '/Purchase/Vendor/List',
         component: <VendorList/>,
         icon: MdMan
       }
       
+    ]
+  },
+  {
+    label: 'Reports',
+    icon: MdPageview,
+    children:[
+      {
+        label: 'Report Dashboard',
+        path: '/Reports/Reports-Dashboard',
+        component: <ReportDashboard/>,
+        icon: MdSpaceDashboard
+      }
     ]
   },
   {
@@ -342,6 +363,11 @@ export const adminRoutes = [
   {
     path: '/Purchase/Purchase-Return/Add',
     component: <AddPurchaseReturn/>,
+    hideFromSidebar: true
+  },
+  {
+    path: '/Purchase/Purchase-Return-Receipt/Add',
+    component: <AddPurchaseReturnReceipt/>,
     hideFromSidebar: true
   }
 ];

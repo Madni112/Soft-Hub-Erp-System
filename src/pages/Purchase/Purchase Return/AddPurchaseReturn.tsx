@@ -12,6 +12,7 @@ const AddPurchaseReturn = () => {
   const [vendors, setVendors] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
   const [productList, setProductList] = useState<any[]>([]);
+  const [bankAccountsList, setBankAccountsList] = useState<any[]>([]);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -26,10 +27,12 @@ const AddPurchaseReturn = () => {
         const { data: vData } = await supabase.from('vendors').select('id, vendor_name').order('vendor_name', { ascending: true });
         const { data: locData } = await supabase.from('inventory_locations').select('id, name').order('name', { ascending: true });
         const { data: prodData } = await supabase.from('products').select('id, product_name, purchase_price, uom');
+        const { data: bankData } = await supabase.from('banks').select('id, bankName, accountTitle, accountNumber');
 
         if (vData) setVendors(vData);
         if (locData) setLocations(locData);
         if (prodData) setProductList(prodData);
+        if (bankData) setBankAccountsList(bankData);
       } catch (err: any) {
         toast.error('Failed to load system return lookup profiles: ' + err.message);
       } finally {
@@ -43,6 +46,13 @@ const AddPurchaseReturn = () => {
     vendorName: Yup.string().required('Vendor selection is mandatory'),
     sourceWarehouse: Yup.string().required('Source warehouse selection is mandatory'),
     returnDate: Yup.string().required('Required'),
+    paymentTerm: Yup.string().required('Required'),
+    amountPaid: Yup.number().typeError('Must be a number').min(0, 'Cannot be negative').required('Required'),
+    selectedBankId: Yup.string().when('paymentTerm', {
+      is: 'By Bank',
+      then: () => Yup.string().required('Please select bank'),
+      otherwise: () => Yup.string().nullable()
+    }),
     items: Yup.array().of(
       Yup.object().shape({
         itemName: Yup.string().required('Required'),
@@ -64,7 +74,7 @@ const AddPurchaseReturn = () => {
             {isEditMode ? 'Modify Purchase Return Note (Debit Note)' : 'Create Outbound Purchase Return (Debit Note)'}
           </h3>
           <button type="button" onClick={() => navigate('/Purchase/Purchase-Return/List')} className="text-sm font-medium text-primary hover:underline cursor-pointer">
-            Back to Registry Log
+            Back to Log Registry
           </button>
         </div>
 
@@ -74,13 +84,19 @@ const AddPurchaseReturn = () => {
             vendorName: editData.vendor_name || '',
             sourceWarehouse: editData.source_warehouse || '',
             returnDate: editData.return_date || '',
+            paymentTerm: editData.payment_term || 'By Cash',
+            selectedBankId: editData.metadata?.selectedBankId || '',
+            amountPaid: editData.amount_paid || 0,
             remarks: editData.remarks || '',
             items: editData.items || [{ itemName: '', qty: 1, rate: 0, uom: 'Nos' }]
           } : {
             returnNo: `RTN-${Date.now().toString().slice(-6)}`,
             vendorName: '',
             sourceWarehouse: '',
-            returnDate: new Date().toISOString().split('T')[0],
+            returnDate: new Date().toISOString().split('T'),
+            paymentTerm: 'By Cash',
+            selectedBankId: '',
+            amountPaid: 0,
             remarks: '',
             items: [{ itemName: '', qty: 1, rate: 0, uom: 'Nos' }]
           }}
@@ -92,7 +108,6 @@ const AddPurchaseReturn = () => {
               let totalReturnSum = 0;
               values.items.forEach((i: any) => { totalReturnSum += (Number(i.qty) * Number(i.rate)); });
 
-              // Check actual warehouse counts first to prevent negative allocations
               for (const item of values.items) {
                 const { data: currentStock } = await supabase
                   .from('warehouse_inventory')
@@ -103,7 +118,7 @@ const AddPurchaseReturn = () => {
 
                 const stockAvailable = currentStock ? Number(currentStock.quantity) : 0;
                 if (!isEditMode && Number(item.qty) > stockAvailable) {
-                  toast.error(`Stock Shortage Alert: You are attempting to return ${item.qty} units of ${item.itemName} from ${values.sourceWarehouse}, but only ${stockAvailable} are available.`);
+                  toast.error(`Stock Shortage Alert: Out of stock units available.`);
                   setLoading(false);
                   return;
                 }
@@ -114,13 +129,15 @@ const AddPurchaseReturn = () => {
                 vendor_name: values.vendorName,
                 source_warehouse: values.sourceWarehouse,
                 return_date: values.returnDate,
+                payment_term: values.paymentTerm,
                 remarks: values.remarks.trim(),
                 total_amount: totalReturnSum,
-                items: values.items
+                amount_paid: Number(values.amountPaid) || 0,
+                items: values.items,
+                metadata: { selectedBankId: values.paymentTerm === 'By Bank' ? values.selectedBankId : null }
               };
 
               if (isEditMode) {
-                // Revert old inventory values first
                 const { data: oldRtn } = await supabase.from('purchase_returns').select('items, source_warehouse').eq('id', editData.id).single();
                 if (oldRtn?.items) {
                   for (const oldItem of oldRtn.items) {
@@ -130,7 +147,6 @@ const AddPurchaseReturn = () => {
                 }
                 const { error } = await supabase.from('purchase_returns').update(databasePayload).eq('id', editData.id);
                 if (error) throw error;
-                // Subtract new values
                 for (const newItem of values.items) {
                   const { data: p } = await supabase.from('warehouse_inventory').select('id, quantity').eq('product_name', newItem.itemName).eq('warehouse_name', values.sourceWarehouse).maybeSingle();
                   if (p) await supabase.from('warehouse_inventory').update({ quantity: Math.max(0, Number(p.quantity) - Number(newItem.qty)) }).eq('id', p.id);
@@ -138,14 +154,13 @@ const AddPurchaseReturn = () => {
               } else {
                 const { error } = await supabase.from('purchase_returns').insert([databasePayload]);
                 if (error) throw error;
-                // Safely decrement warehouse stocks
                 for (const item of values.items) {
                   const { data: p } = await supabase.from('warehouse_inventory').select('id, quantity').eq('product_name', item.itemName).eq('warehouse_name', values.sourceWarehouse).maybeSingle();
                   if (p) await supabase.from('warehouse_inventory').update({ quantity: Math.max(0, Number(p.quantity) - Number(item.qty)) }).eq('id', p.id);
                 }
               }
 
-              toast.success('Purchase Return (Debit Note) logged and inventory adjusted safely!');
+              toast.success('Purchase Return logged successfully!');
               navigate('/Purchase/Purchase-Return/List');
             } catch (err: any) {
               toast.error('Submission Interrupted: ' + err.message);
@@ -156,7 +171,7 @@ const AddPurchaseReturn = () => {
         >
           {({ handleChange, values, errors, touched, setFieldValue }) => (
             <Form className="p-6 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                 <div>
                   <label className="block text-gray-500 mb-1.5 font-bold">Debit Note Return #:</label>
                   <input type="text" readOnly value={values.returnNo} className="w-full border border-stroke dark:border-strokedark rounded p-2 bg-gray-50 dark:bg-meta-4/20 font-bold font-mono text-primary outline-none text-xs" />
@@ -169,17 +184,35 @@ const AddPurchaseReturn = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-gray-500 mb-1.5 font-bold">Dispatch Source Warehouse: *</label>
+                  <label className="block text-gray-500 mb-1.5 font-bold">Source Warehouse: *</label>
                   <select name="sourceWarehouse" onChange={handleChange} value={values.sourceWarehouse} className={`w-full border rounded p-2 bg-transparent outline-none text-black dark:text-white font-semibold focus:border-primary text-xs ${touched.sourceWarehouse && errors.sourceWarehouse ? 'border-red-500' : 'border-stroke dark:border-strokedark'}`}>
                     <option value="">-- Choose Pull Location --</option>
                     {locations.map(l => <option key={l.id} value={l.name}>{l.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-gray-500 mb-1.5 font-bold">Return Processing Date: *</label>
+                  <label className="block text-gray-500 mb-1.5 font-bold">Reimbursement Method: *</label>
+                  <select name="paymentTerm" onChange={handleChange} value={values.paymentTerm} className="w-full rounded border border-stroke p-2 bg-transparent text-xs text-black dark:text-white font-bold outline-none focus:border-primary dark:bg-boxdark">
+                    <option value="By Cash">By Cash</option>
+                    <option value="By Bank">By Bank</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-gray-500 mb-1.5 font-bold">Processing Date: *</label>
                   <input type="date" name="returnDate" onChange={handleChange} value={values.returnDate} className="w-full border border-stroke dark:border-strokedark rounded p-2 bg-transparent outline-none font-bold text-black dark:text-white focus:border-primary text-xs" />
                 </div>
               </div>
+
+              {values.paymentTerm === 'By Bank' && (
+                <div className="p-4 bg-primary/5 rounded border border-primary/20 animate-fade-in md:w-1/2">
+                  <label className="block text-primary dark:text-white font-bold mb-1.5 uppercase text-[11px]">Destination Target Vault Bank: *</label>
+                  <select name="selectedBankId" onChange={handleChange} value={values.selectedBankId} className={`w-full rounded border p-2 bg-white dark:bg-boxdark font-bold text-black dark:text-white outline-none text-xs focus:border-primary ${touched.selectedBankId && errors.selectedBankId ? 'border-red-500' : 'border-stroke dark:border-strokedark'}`}>
+                    <option value="">-- Choose Account Settlement Wire Origin --</option>
+                    {bankAccountsList.map(b => <option key={b.id} value={b.bankName}>{b.bankName} - {b.accountTitle} ({b.accountNumber || '-'})</option>)}
+                  </select>
+                  {touched.selectedBankId && errors.selectedBankId && <p className="text-red-500 font-bold text-[10px] mt-1">⚠️ {String(errors.selectedBankId)}</p>}
+                </div>
+              )}
               <div className="border border-stroke dark:border-strokedark rounded p-4 overflow-x-auto">
                 <table className="w-full border-collapse border border-stroke dark:border-strokedark text-center min-w-[800px]">
                   <thead>
@@ -245,32 +278,55 @@ const AddPurchaseReturn = () => {
                 </table>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
                 <div className="md:col-span-2">
-                  <label className="block text-gray-500 mb-1 font-bold">Return Reason / Allocation Memo Remarks:</label>
-                  <input type="text" name="remarks" onChange={handleChange} value={values.remarks} className="w-full border border-stroke dark:border-strokedark rounded p-2 bg-transparent outline-none focus:border-primary text-black dark:text-white text-xs" placeholder="Describe fault classifications, damage tokens or vendor authorization numbers..." />
+                  <label className="block text-gray-500 mb-1 font-bold">Return Reason Description Notes:</label>
+                  <input type="text" name="remarks" onChange={handleChange} value={values.remarks} className="w-full border border-stroke dark:border-strokedark rounded p-2 bg-transparent outline-none focus:border-primary text-black dark:text-white text-xs" placeholder="Describe fault metrics..." />
                 </div>
-                <div className="text-right p-4 border border-stroke dark:border-strokedark rounded-sm bg-gray-50/50 dark:bg-meta-4/10">
-                  <span className="text-gray-400 font-bold block text-xs uppercase mb-1">Total Credited Offset (PKR):</span>
-                  <b className="text-success text-lg font-black font-mono">
-                    Rs. {values.items.reduce((acc: number, curr: any) => acc + ((Number(curr.qty) || 0) * (Number(curr.rate) || 0)), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                  </b>
-                </div>
+                {(() => {
+                  const inlineBillTotal = values.items.reduce((sum: number, curr: any) => sum + ((Number(curr.qty) || 0) * (Number(curr.rate) || 0)), 0);
+                  const calculatedDebtRemaining = Math.max(0, inlineBillTotal - (Number(values.amountPaid) || 0));
+
+                  return (
+                    <div className="p-4 border border-stroke dark:border-strokedark rounded-sm bg-gray-50/50 dark:bg-meta-4/10 space-y-2.5">
+                      <div className="flex justify-between items-center text-gray-400 font-bold uppercase text-[10px]">
+                        <span>Gross Return Total:</span>
+                        <b className="text-black dark:text-white font-mono text-xs">Rs. {inlineBillTotal.toLocaleString()}</b>
+                      </div>
+                      <div>
+                        <label className="block text-gray-500 mb-1 font-bold uppercase text-[10px]">Reimbursement Liquid Cash Collected (PKR): *</label>
+                        <input 
+                          type="number" 
+                          name="amountPaid" 
+                          onKeyDown={blockInvalidChar} 
+                          onChange={(e) => {
+                            const enteredValue = Number(e.target.value) || 0;
+                            if (enteredValue > inlineBillTotal) {
+                              toast.error(`Cannot exceed total returned value (Rs. ${inlineBillTotal.toLocaleString()})`);
+                              setFieldValue('amountPaid', inlineBillTotal);
+                            } else {
+                              handleChange(e);
+                            }
+                          }} 
+                          value={values.amountPaid} 
+                          placeholder="0.00" 
+                          className="w-full border border-stroke dark:border-strokedark p-2 rounded text-right font-black text-success text-xs outline-none bg-white dark:bg-boxdark focus:border-primary" 
+                        />
+                      </div>
+                      <div className="flex justify-between items-center text-danger font-bold uppercase text-[10px] pt-1.5 border-t border-stroke dark:border-strokedark">
+                        <span>Net Outstanding Credit Line Debt Note:</span>
+                        <b className="font-mono text-xs underline">Rs. {calculatedDebtRemaining.toLocaleString()}</b>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="pt-4 border-t border-stroke dark:border-strokedark flex justify-end gap-3">
-                <button 
-                  type="button" 
-                  onClick={() => navigate('/Purchase/Purchase-Return/List')} 
-                  className="rounded bg-[#cb3c53] py-2 px-8 font-semibold text-xs text-white hover:bg-opacity-90 transition shadow-sm h-9 min-w-32 cursor-pointer"
-                >
+                <button type="button" onClick={() => navigate('/Purchase/Purchase-Return/List')} className="rounded bg-[#cb3c53] py-2 px-8 font-semibold text-xs text-white hover:bg-opacity-90 transition shadow-sm h-9 min-w-32 cursor-pointer">
                   Cancel
                 </button>
-                <button 
-                  type="submit" 
-                  disabled={loading} 
-                  className={`rounded ${isEditMode ? 'bg-success' : 'bg-[#4338ca]'} py-2 px-8 font-semibold text-xs text-white hover:bg-opacity-90 transition shadow-sm h-9 min-w-32 cursor-pointer`}
-                >
+                <button type="submit" disabled={loading} className={`rounded ${isEditMode ? 'bg-success' : 'bg-[#4338ca]'} py-2 px-10 font-bold text-white hover:bg-opacity-90 transition text-xs shadow-sm h-9 min-w-32 cursor-pointer font-semibold`}>
                   {loading ? <Spinner /> : isEditMode ? 'Update Note' : 'Save Return'}
                 </button>
               </div>
