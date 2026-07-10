@@ -15,6 +15,7 @@ const SalesHistory = () => {
   const [dropdownCoords, setDropdownCoords] = useState({ top: 0, right: 0 });
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
+  const [returnedInvoiceNos, setReturnedInvoiceNos] = useState<string[]>([]);
 
   useEffect(() => {
     fetchInvoices();
@@ -34,20 +35,31 @@ const SalesHistory = () => {
   const fetchInvoices = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      const { data: invoicesData, error: invError } = await supabase
         .from('sales_invoices')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setInvoices(data || []);
+      if (invError) throw invError;
+
+      const { data: returnsData, error: retError } = await supabase
+        .from('sales_returns')
+        .select('original_invoice_no');
+
+      if (!retError && returnsData) {
+        const cleanList = returnsData
+          .map((r: any) => String(r.original_invoice_no || '').trim().toLowerCase())
+          .filter(Boolean);
+        setReturnedInvoiceNos(cleanList);
+      }
+
+      setInvoices(invoicesData || []);
     } catch (err: any) {
       toast.error(err.message);
     } finally {
       setLoading(false);
     }
   };
-
   const handleSync = async (invoice: any) => {
     setSyncingId(invoice.id);
     try {
@@ -66,6 +78,7 @@ const SalesHistory = () => {
       setSyncingId(null);
     }
   };
+
   const handleDeleteInvoice = async (id: string | number) => {
     if (!window.confirm('Are you certain you want to permanently delete this invoice record?')) return;
 
@@ -105,10 +118,10 @@ const SalesHistory = () => {
       const { error: deleteError } = await supabase.from('sales_invoices').delete().eq('id', id);
       if (deleteError) throw deleteError;
 
-      toast.success('Invoice deleted cleanly. Global pool and warehouse stock restored!');
+      toast.success('Invoice deleted cleanly. Stock metrics restored!');
       fetchInvoices();
     } catch (err: any) {
-      toast.error('Deletion Failed: ' + err.message);
+      toast.error('Deletion Interrupted: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -148,47 +161,68 @@ const SalesHistory = () => {
           </div>
         </div>
 
-        <div className="max-w-full overflow-x-auto">
-          <table className="w-full table-auto border-collapse">
+        <div className="w-full">
+          <table className="w-full table-layout border-collapse text-[11px]">
             <thead>
-              <tr className="bg-gray-2 text-left dark:bg-meta-4 text-xs font-bold uppercase tracking-wider text-black dark:text-white border-b border-stroke dark:border-strokedark">
-                <th className="py-4 px-4 font-semibold text-sm w-24">Invoice No</th>
-                <th className="py-4 px-4 font-semibold text-sm w-20">Dc No</th>
-                <th className="py-4 px-4 font-semibold text-sm">Sale Date</th>
-                <th className="py-4 px-4 font-semibold text-sm w-28">Sale Type</th>
-                <th className="py-4 px-4 font-semibold text-sm">Salesman</th>
-                <th className="py-4 px-4 font-semibold text-sm">Customer</th>
-                <th className="py-4 px-4 font-semibold text-sm w-32">Receipt Status</th>
-                <th className="py-4 px-4 font-semibold text-sm">FBR Invoice No</th>
-                <th className="py-4 px-4 font-semibold text-sm text-right">Total Amount</th>
-                <th className="py-4 px-4 font-semibold text-sm w-24 text-center">Action</th>
+              <tr className="bg-gray-2 text-left dark:bg-meta-4 text-[10px] font-black uppercase tracking-wider text-black dark:text-white border-b border-stroke dark:border-strokedark">
+                <th className="py-3 px-2 text-center font-bold">Invoice No</th>
+                <th className="py-3 px-2 font-bold text-center">Dc No</th>
+                <th className="py-3 px-2 font-bold">Sale Date</th>
+                <th className="py-3 px-2 font-bold text-center">Sale Type</th>
+                <th className="py-3 px-2 font-bold">Salesman</th>
+                <th className="py-3 px-2 font-bold">Customer</th>
+                <th className="py-3 px-2 font-bold text-center">Receipt Status</th>
+                <th className="py-3 px-2 font-bold text-center">FBR Invoice No</th>
+                <th className="py-3 px-2 font-bold text-right pr-2">Total Amount</th>
+                <th className="py-3 px-2 font-bold text-center w-14">Action</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr><td colSpan={10} className="text-center py-12"><Spinner /></td></tr>
               ) : paginatedInvoices.length === 0 ? (
-                <tr><td colSpan={10} className="text-center py-10 text-sm text-gray-500">No records located.</td></tr>
+                <tr><td colSpan={10} className="text-center py-10 text-xs text-gray-500">No records located.</td></tr>
               ) : (
                 paginatedInvoices.map((inv) => {
+                  const rawInvoiceIdString = String(inv.id).trim().toLowerCase();
+                  
+                  const isReturned = returnedInvoiceNos.some(retNo => {
+                    return (
+                      retNo === rawInvoiceIdString ||
+                      retNo === `inv-${rawInvoiceIdString}` ||
+                      retNo === `inv-${rawInvoiceIdString.padStart(4, '0')}` ||
+                      retNo.includes(rawInvoiceIdString)
+                    );
+                  });
+
                   return (
-                    <tr key={inv.id} className="border-b border-stroke dark:border-strokedark hover:bg-slate-50 dark:hover:bg-meta-4/10 duration-150 text-sm">
-                      <td className="py-3.5 px-4 text-black dark:text-white font-medium">{inv.id}</td>
-                      <td className="py-3.5 px-4 text-gray-500">{inv.dc_no || '-'}</td>
-                      <td className="py-3.5 px-4 text-gray-600 dark:text-gray-400 whitespace-nowrap">{inv.sale_date || new Date(inv.created_at).toLocaleString()}</td>
-                      <td className="py-3.5 px-4">
-                        <span className={`inline-flex rounded-sm py-0.5 px-2 text-xs font-bold text-white uppercase tracking-wide ${inv.payment_term === 'Cash' ? 'bg-success' : 'bg-danger'}`}>
+                    <tr key={inv.id} className="border-b border-stroke dark:border-strokedark hover:bg-slate-50 dark:hover:bg-meta-4/10 duration-150">
+                      <td className="py-2.5 px-2 text-black dark:text-white font-bold text-center font-mono">{inv.id}</td>
+                      <td className="py-2.5 px-2 text-gray-500 text-center font-mono">{inv.dc_no || '-'}</td>
+                      <td className="py-2.5 px-2 text-gray-600 dark:text-gray-400 whitespace-nowrap">{inv.sale_date || new Date(inv.created_at).toLocaleString()}</td>
+                      <td className="py-2.5 px-2 text-center">
+                        <span className={`inline-flex rounded-sm py-0.5 px-1.5 text-[9px] font-black text-white uppercase tracking-wide ${inv.payment_term === 'Cash' ? 'bg-success' : 'bg-danger'}`}>
                           {inv.payment_term === 'Cash' ? 'Cash' : 'On Credit'}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 text-gray-700 dark:text-gray-300">{inv.salesman || 'General'}</td>
-                      <td className="py-3.5 px-4 font-medium text-black dark:text-white whitespace-nowrap">{inv.customer_name}</td>
-                      <td className="py-3.5 px-4">
-                        <span className={`text-xs font-semibold uppercase ${inv.receipt_status === 'Paid' ? 'text-success' : 'text-danger'}`}>{inv.receipt_status || 'Unpaid'}</span>
+                      <td className="py-2.5 px-2 text-gray-700 dark:text-gray-300 font-medium whitespace-nowrap">{inv.salesman || 'General'}</td>
+                      <td className="py-2.5 px-2 font-bold text-black dark:text-white whitespace-nowrap">{inv.customer_name}</td>
+                      
+                      <td className="py-2.5 px-2 text-center">
+                        {isReturned ? (
+                          <span className="text-[10px] font-black uppercase tracking-wide bg-amber-500 text-white px-2 py-0.5 rounded-sm shadow-xs animate-pulse">
+                            Returned
+                          </span>
+                        ) : (
+                          <span className={`text-[10px] font-bold uppercase ${inv.receipt_status === 'Paid' || inv.receipt_status === 'Confirm' ? 'text-success' : 'text-danger'}`}>
+                            {inv.receipt_status || 'Unpaid'}
+                          </span>
+                        )}
                       </td>
-                      <td className="py-3.5 px-4"><span className={`font-medium ${inv.fbr_fiscal_number ? 'text-success' : 'text-danger'}`}>{inv.fbr_fiscal_number || 'Unposted'}</span></td>
-                      <td className="py-3.5 px-4 text-right font-bold text-black dark:text-white">{Number(inv.total_amount || 0).toFixed(2)}</td>
-                      <td className="py-3.5 px-4 text-center">
+                      
+                      <td className="py-2.5 px-2 text-center whitespace-nowrap"><span className={`font-bold ${inv.fbr_fiscal_number ? 'text-success' : 'text-brand'}`}>{inv.fbr_fiscal_number || 'Unposted'}</span></td>
+                      <td className="py-2.5 px-2 text-right font-black text-black dark:text-white font-mono pr-2">Rs. {Number(inv.total_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                      <td className="py-2.5 px-2 text-center">
                         <button 
                           onClick={(e) => {
                             e.stopPropagation();
@@ -196,7 +230,7 @@ const SalesHistory = () => {
                             setDropdownCoords({ top: rect.bottom + window.scrollY, right: window.innerWidth - rect.right - window.scrollX });
                             setOpenActionId(openActionId === inv.id ? null : inv.id);
                           }} 
-                          className="border border-stroke dark:border-strokedark rounded px-2.5 py-0.5 text-primary bg-slate-50 dark:bg-meta-4 hover:bg-slate-100 transition font-bold tracking-widest cursor-pointer"
+                          className="border border-stroke dark:border-strokedark rounded px-2 py-0.5 text-primary bg-slate-50 dark:bg-meta-4 hover:bg-slate-100 transition font-black tracking-widest text-[10px] cursor-pointer"
                         >
                           ...
                         </button>
@@ -206,39 +240,39 @@ const SalesHistory = () => {
                 })
               )}
             </tbody>
-          </table>
-        </div>
-        {openActionId && (() => {
+            </table>
+            </div>
+                    {openActionId && (() => {
           const selectedInvoice = invoices.find(i => i.id === openActionId);
           if (!selectedInvoice) return null;
 
           return (
             <div 
               style={{ position: 'fixed', top: `${dropdownCoords.top - window.scrollY}px`, right: `${dropdownCoords.right}px` }}
-              className="z-99999 w-44 rounded border border-stroke bg-white py-1 shadow-2xl dark:border-strokedark dark:bg-boxdark text-left"
+              className="z-99999 w-44 rounded border border-stroke bg-white py-1 shadow-2xl dark:border-strokedark dark:bg-boxdark text-left text-xs"
               onClick={(e) => e.stopPropagation()}
             >
-              <ul className="flex flex-col text-xs font-medium text-gray-700 dark:text-gray-300">
+              <ul className="flex flex-col font-medium text-gray-700 dark:text-gray-300">
                 <li>
                   <button type="button" onClick={() => { setOpenActionId(null); navigate('/Sales-Return/Debit-Notes/Add', { state: { invoice: selectedInvoice } }); }} className="flex items-center gap-2.5 w-full px-4 py-2 hover:bg-gray-100 dark:hover:bg-meta-4 transition border-b border-stroke dark:border-strokedark text-blue-500 cursor-pointer">
-                    <FiRotateCcw size={14} /> Sale Return
+                    <FiRotateCcw size={13} /> Sale Return
                   </button>
                 </li>
                 <li>
                   <button disabled={!!selectedInvoice.fbr_fiscal_number} onClick={() => { setOpenActionId(null); navigate('/sales/invoice/add', { state: { invoice: selectedInvoice } }); }} className="flex items-center gap-2.5 w-full px-4 py-2 hover:bg-gray-100 dark:hover:bg-meta-4 transition text-yellow-600 disabled:opacity-30 cursor-pointer">
-                    <FiEdit size={14} /> Edit Record
+                    <FiEdit size={13} /> Edit Record
                   </button>
                 </li>
                 {!selectedInvoice.fbr_fiscal_number && (
                   <li>
-                    <button disabled={syncingId === selectedInvoice.id} onClick={() => { setOpenActionId(null); handleSync(selectedInvoice); }} className="flex items-center gap-2.5 w-full px-4 py-2 hover:bg-gray-100 dark:hover:bg-meta-4 transition text-primary font-semibold cursor-pointer">
-                      <FiSend size={14} /> Post to FBR
+                    <button disabled={syncingId === selectedInvoice.id} onClick={() => { setOpenActionId(null); handleSync(selectedInvoice); }} className="flex items-center gap-2.5 w-full px-4 py-2 hover:bg-gray-100 dark:hover:bg-meta-4 transition text-primary font-bold cursor-pointer">
+                      <FiSend size={13} /> Post to FBR
                     </button>
                   </li>
                 )}
                 <li>
                   <button disabled={!!selectedInvoice.fbr_fiscal_number} onClick={() => { setOpenActionId(null); handleDeleteInvoice(selectedInvoice.id); }} className="flex items-center gap-2.5 w-full px-4 py-2 hover:bg-gray-100 dark:hover:bg-meta-4 transition text-danger disabled:opacity-30 border-t border-stroke dark:border-strokedark mt-1 pt-1.5 cursor-pointer">
-                    <FiTrash2 size={14} /> Delete Record
+                    <FiTrash2 size={13} /> Delete Record
                   </button>
                 </li>
               </ul>
@@ -247,12 +281,14 @@ const SalesHistory = () => {
         })()}
 
         <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mt-4 pt-4 border-t border-stroke dark:border-strokedark">
-          <div className="text-sm text-gray-500 dark:text-gray-400">Showing {startIndex + 1} to {endIndex} of {totalEntries} entries</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400">Showing {startIndex + 1} to {endIndex} of {totalEntries} entries</div>
           {totalPages > 1 && (
             <div className="flex items-center gap-1">
-              <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => Math.max(p - 1, 1))} className="px-3 py-1.5 rounded text-xs font-medium border border-stroke dark:border-strokedark hover:bg-gray-100 transition disabled:opacity-30 cursor-pointer" >Previous</button>
-              {Array.from({ length: totalPages }, (_, i) => <button key={i + 1} onClick={() => setCurrentPage(i + 1)} className={`px-3 py-1.5 rounded text-xs border transition ${currentPage === i + 1 ? 'bg-primary text-white border-primary' : 'border-stroke dark:border-strokedark text-gray-500 hover:bg-gray-50'}`} >{i + 1}</button>)}
-              <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))} className="px-3 py-1.5 rounded text-xs font-medium border border-stroke dark:border-strokedark hover:bg-gray-100 transition disabled:opacity-30 cursor-pointer" >Next</button>
+              <button type="button" disabled={currentPage === 1} onClick={() => setCurrentPage(p => Math.max(p - 1, 1))} className="px-3 py-1.5 rounded text-xs font-medium border border-stroke dark:border-strokedark hover:bg-gray-100 transition disabled:opacity-30 cursor-pointer">Previous</button>
+              {Array.from({ length: totalPages }, (_, i) => (
+                <button type="button" key={i + 1} onClick={() => setCurrentPage(i + 1)} className={`px-3 py-1.5 rounded text-xs border transition ${currentPage === i + 1 ? 'bg-primary text-white border-primary' : 'border-stroke dark:border-strokedark text-gray-500 hover:bg-gray-50'}`}>{i + 1}</button>
+              ))}
+              <button type="button" disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))} className="px-3 py-1.5 rounded text-xs font-medium border border-stroke dark:border-strokedark hover:bg-gray-100 transition disabled:opacity-30 cursor-pointer">Next</button>
             </div>
           )}
         </div>

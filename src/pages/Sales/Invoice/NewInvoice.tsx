@@ -22,12 +22,12 @@ const NewInvoice = () => {
   const [challanList, setChallanList] = useState<any[]>([]);
   const [banks, setBanks] = useState<any[]>([]);
   const [warehouses, setWarehouses] = useState<any[]>([]);
-  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [transportFleet, setTransportFleet] = useState<any[]>([]);
 
   const [invoiceData, setInvoiceData] = useState<any>({
     customerName: editData?.customer_name || '',
     saleStatus: editData?.sale_status || 'Confirm',
-    saleDate: editData?.sale_date || new Date().toISOString().split('T')[0],
+    saleDate: editData?.sale_date || new Date().toISOString().split('T'),
     salesman: editData?.salesman || '',
     scenarioType: editData?.scenario_type || '',
     paymentTerm: editData?.payment_term || 'On Credit',
@@ -35,9 +35,12 @@ const NewInvoice = () => {
     whTaxPercentage: editData?.wh_tax_percentage || 0,
     cashAmountPaid: editData?.cash_amount_paid || 0,
     dispatchWarehouse: editData?.dispatch_warehouse || '',
+    transportName: editData?.transport_name || 'Self Pick',
+    transportCharges: editData?.transport_charges || 0,
     bankPayments: editData?.bankPayments || editData?.bank_payments || [{ selectedBank: '', bankAmount: 0 }],
     items: editData?.items || [{ extraDisAmt: 0, itemName: '', location: '', rp: 0, extraDiscPer: 0, mrp: 0, qty: 1, gstRate: 18, fTaxPer: 0, discAmt: 0, hsCode: '', availableQty: 0 }]
   });
+
   useEffect(() => {
     const fetchAllInvoiceMetadata = async () => {
       try {
@@ -48,6 +51,7 @@ const NewInvoice = () => {
         const { data: dcData } = await supabase.from('delivery_challans').select('id, customer_name');
         const { data: bankData } = await supabase.from('banks').select('id, bankName, accountTitle');
         const { data: whData } = await supabase.from('inventory_locations').select('id, name').order('name', { ascending: true });
+        const { data: transData } = await supabase.from('logistics_transportation').select('id, name');
 
         if (custData) setCustomers(custData);
         if (salesData) setSalesmen(salesData);
@@ -55,6 +59,7 @@ const NewInvoice = () => {
         if (dcData) setChallanList(dcData);
         if (bankData) setBanks(bankData);
         if (whData) setWarehouses(whData);
+        if (transData) setTransportFleet(transData);
       } catch (err: any) {
         toast.error('Failed to load records: ' + err.message);
         navigate('/sales/invoice/list');
@@ -64,7 +69,6 @@ const NewInvoice = () => {
     };
     fetchAllInvoiceMetadata();
   }, [navigate]);
-
   const handleProductSelectionWithWH = async (selectedName: string, index: number, chosenWarehouse: string, setFieldValue: any) => {
     const matchingProduct = productList.find(p => p.product_name === selectedName);
     if (!matchingProduct) {
@@ -98,10 +102,22 @@ const NewInvoice = () => {
       setFieldValue(`items.${index}.availableQty`, 0);
     }
   };
+
   const validationSchema = Yup.object().shape({
-    customerName: Yup.string().required('Customer name selector cannot be left empty!'),
-    scenarioType: Yup.string().required('Scenario type field selection is mandatory!'),
-    dispatchWarehouse: Yup.string().required('Please choose the dispatch source warehouse partition location!'),
+    customerName: Yup.string().required('Required'),
+    scenarioType: Yup.string().required('Required'),
+    dispatchWarehouse: Yup.string().required('Required'),
+    transportName: Yup.string().required('Required'),
+    transportCharges: Yup.number()
+      .typeError('Must be a number')
+      .required('Required')
+      .test('freight-charges-conditional-audit-rule', 'Invalid Cost Allocation', function (value) {
+        const costValue = Number(value) || 0;
+        if (costValue === 0 || (costValue >= 100 && costValue <= 500)) {
+          return true;
+        }
+        return this.createError({ message: 'Transport charges must be 0, or between Rs. 100 to Rs. 500!' });
+      }),
     items: Yup.array().of(
       Yup.object().shape({
         itemName: Yup.string().required('Required'),
@@ -150,14 +166,14 @@ const NewInvoice = () => {
             }, 0);
 
             const whTaxAmt = (baseTotal / 100) * (values.whTaxPercentage || 0);
-            const totalNetAmt = baseTotal - whTaxAmt;
+            const totalNetAmt = (baseTotal - whTaxAmt) + (Number(values.transportCharges) || 0);
 
             const cashPaid = Number(values.cashAmountPaid) || 0;
             const bankPaid = values.bankPayments.reduce((acc: number, curr: any) => acc + (Number(curr.bankAmount) || 0), 0);
             const collectivePaymentPaid = cashPaid + bankPaid;
 
             if (collectivePaymentPaid > totalNetAmt + 0.01) {
-              toast.error(`Validation Error: Overpayment blocked! Total entered payments (Rs. ${collectivePaymentPaid.toLocaleString()}) cannot be greater than the Net Invoice Total (Rs. ${totalNetAmt.toLocaleString()}).`);
+              toast.error(`Validation Error: Overpayment blocked! Payments cannot exceed the Net Invoice Total.`);
               return;
             }
 
@@ -171,7 +187,7 @@ const NewInvoice = () => {
 
               const availableQty = activeStock ? Number(activeStock.quantity) : 0;
               if (availableQty < Number(item.qty)) {
-                toast.error(`Stock Error: "${item.itemName}" only has ${availableQty} units resting inside "${values.dispatchWarehouse}" warehouse partition.`);
+                toast.error(`Stock Error: "${item.itemName}" only has ${availableQty} units inside "${values.dispatchWarehouse}".`);
                 return;
               }
             }
@@ -189,7 +205,9 @@ const NewInvoice = () => {
               items: values.items,
               dc_no: values.dcNo,
               cash_amount_paid: cashPaid,
-              dispatch_warehouse: values.dispatchWarehouse
+              dispatch_warehouse: values.dispatchWarehouse,
+              transport_name: values.transportName.trim(),
+              transport_charges: Number(values.transportCharges) || 0
             };
 
             try {
@@ -216,7 +234,7 @@ const NewInvoice = () => {
                   const { data: p } = await supabase.from('warehouse_inventory').select('id, quantity').eq('product_name', item.itemName).eq('warehouse_name', values.dispatchWarehouse).maybeSingle();
                   if (p) await supabase.from('warehouse_inventory').update({ quantity: Number(p.quantity) - Number(item.qty) }).eq('id', p.id);
                 }
-                toast.success('Sale Saved and Partition Stock Deducted!');
+                toast.success('Sale Saved and Stock Deducted!');
               }
               navigate('/sales/invoice/list');
             } catch (err: any) {
@@ -226,7 +244,9 @@ const NewInvoice = () => {
             }
           }}
         >
-          {({ values, handleChange, setFieldValue, errors, touched }) => {
+          {({ values, handleChange, handleBlur, setFieldValue, errors, touched, submitCount }) => {
+            const hasAttempted = submitCount > 0;
+
             React.useEffect(() => {
               const isUnregistered = values.scenarioType === "Goods at Standard Rate to Unregistered Buyers";
               values.items.forEach((_item: any, idx: number) => {
@@ -245,14 +265,14 @@ const NewInvoice = () => {
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1">Sale Status:</label>
-                    <select name="saleStatus" onChange={handleChange} value={values.saleStatus} className="w-full rounded border border-stroke p-2 text-sm bg-white dark:bg-boxdark text-black dark:text-white dark:border-strokedark font-semibold">
+                    <select name="saleStatus" onBlur={handleBlur} onChange={handleChange} value={values.saleStatus} className="w-full rounded border border-stroke p-2 text-sm bg-white dark:bg-boxdark text-black dark:text-white dark:border-strokedark font-semibold">
                       <option value="Confirm">Confirm</option>
                       <option value="Draft">Draft</option>
                     </select>
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1">Payment Term:</label>
-                    <select name="paymentTerm" onChange={handleChange} value={values.paymentTerm} className="w-full rounded border border-stroke p-2 text-sm bg-white dark:bg-boxdark text-black dark:text-white dark:border-strokedark font-semibold">
+                    <select name="paymentTerm" onBlur={handleBlur} onChange={handleChange} value={values.paymentTerm} className="w-full rounded border border-stroke p-2 text-sm bg-white dark:bg-boxdark text-black dark:text-white dark:border-strokedark font-semibold">
                       <option value="On Credit">On Credit</option>
                       <option value="Cash">Cash</option>
                       <option value="Bank Transfer">Bank Transfer</option>
@@ -260,7 +280,7 @@ const NewInvoice = () => {
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1">Sale Date:</label>
-                    <input type="date" name="saleDate" onChange={handleChange} value={values.saleDate} className="w-full rounded border border-stroke p-2 text-sm bg-white dark:bg-boxdark text-black dark:text-white dark:border-strokedark font-semibold" />
+                    <input type="date" name="saleDate" onBlur={handleBlur} onChange={handleChange} value={values.saleDate} className="w-full rounded border border-stroke p-2 text-sm bg-white dark:bg-boxdark text-black dark:text-white dark:border-strokedark font-semibold" />
                   </div>
                 </div>
 
@@ -269,6 +289,7 @@ const NewInvoice = () => {
                     <label className="block text-xs font-medium mb-1 text-primary font-bold">Link Delivery Challan:</label>
                     <select
                       name="dcNo"
+                      onBlur={handleBlur}
                       onChange={(e) => {
                         handleChange(e);
                         const chosenDc = challanList.find(c => c.id.toString() === e.target.value);
@@ -287,20 +308,22 @@ const NewInvoice = () => {
                     <label className="block text-xs font-medium mb-1">Customer Name: *</label>
                     <select
                       name="customerName"
+                      onBlur={handleBlur}
                       onChange={handleChange}
                       value={values.customerName}
-                      className={`w-full rounded border p-2 text-sm text-black dark:text-white font-semibold outline-none transition-all ${submitAttempted && errors.customerName ? 'border-red-500 bg-red-50 dark:bg-red-950/20' : 'border-stroke dark:border-strokedark bg-white dark:bg-boxdark'}`}
+                      className={`w-full rounded border p-2 text-sm text-black dark:text-white font-semibold outline-none transition-all ${hasAttempted && errors.customerName ? 'border-red-500 bg-red-50 dark:bg-red-950/20 text-red-900 focus:border-red-500' : 'border-stroke dark:border-strokedark bg-white dark:bg-boxdark focus:border-primary'}`}
                     >
                       <option value="">-- Select Customer --</option>
                       {customers.map(c => <option key={c.id} value={c.customerName}>{c.customerName}</option>)}
                     </select>
-                    {submitAttempted && errors.customerName && <p className="text-[10px] text-red-500 font-bold mt-1 ml-1">⚠️ {String(errors.customerName)}</p>}
+                    {hasAttempted && errors.customerName && <p className="text-[10px] text-red-500 font-bold mt-1 ml-1">⚠️ Required Field</p>}
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1">Dispatch Warehouse (From): *</label>
                     <select
                       name="dispatchWarehouse"
                       value={values.dispatchWarehouse}
+                      onBlur={handleBlur}
                       onChange={async (e) => {
                         const selectedWH = e.target.value;
                         setFieldValue('dispatchWarehouse', selectedWH);
@@ -314,16 +337,16 @@ const NewInvoice = () => {
                           }
                         }
                       }}
-                      className={`w-full rounded border p-2 text-sm bg-white dark:bg-boxdark text-black dark:text-white font-bold outline-none focus:border-primary ${submitAttempted && errors.dispatchWarehouse ? 'border-red-500 bg-red-50 dark:bg-red-950/20' : 'border-stroke dark:border-strokedark'}`}
+                      className={`w-full rounded border p-2 text-sm bg-white dark:bg-boxdark text-black dark:text-white font-bold outline-none focus:border-primary ${hasAttempted && errors.dispatchWarehouse ? 'border-red-500 bg-red-50 dark:bg-red-950/20 text-red-900 focus:border-red-500' : 'border-stroke dark:border-strokedark'}`}
                     >
                       <option value="">-- Choose Stock Bin --</option>
                       {warehouses.map(w => <option key={w.id} value={w.name}>{w.name}</option>)}
                     </select>
-                    {submitAttempted && errors.dispatchWarehouse && <p className="text-[10px] text-red-500 font-bold mt-1 ml-1">⚠️ Required</p>}
+                    {hasAttempted && errors.dispatchWarehouse && <p className="text-[10px] text-red-500 font-bold mt-1 ml-1">⚠️ Required Field</p>}
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1">Salesman:</label>
-                    <select name="salesman" onChange={handleChange} value={values.salesman} className="w-full rounded border border-stroke p-2 text-sm bg-white dark:bg-boxdark text-black dark:text-white dark:border-strokedark font-semibold">
+                    <select name="salesman" onBlur={handleBlur} onChange={handleChange} value={values.salesman} className="w-full rounded border border-stroke p-2 text-sm bg-white dark:bg-boxdark text-black dark:text-white dark:border-strokedark font-semibold">
                       <option value="">-- Select Salesman --</option>
                       {salesmen.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                     </select>
@@ -332,9 +355,10 @@ const NewInvoice = () => {
                     <label className="block text-xs font-medium mb-1">Scenario Type: *</label>
                     <select
                       name="scenarioType"
+                      onBlur={handleBlur}
                       onChange={handleChange}
                       value={values.scenarioType}
-                      className={`w-full rounded border p-2 text-sm text-black dark:text-white font-semibold outline-none transition-all ${submitAttempted && errors.scenarioType ? 'border-red-500 bg-red-50 dark:bg-red-950/20' : 'border-stroke dark:border-strokedark bg-white dark:bg-boxdark'}`}
+                      className={`w-full rounded border p-2 text-sm text-black dark:text-white font-semibold outline-none transition-all ${hasAttempted && errors.scenarioType ? 'border-red-500 bg-red-50 dark:bg-red-950/20 text-red-900 focus:border-red-500' : 'border-stroke dark:border-strokedark bg-white dark:bg-boxdark focus:border-primary'}`}
                     >
                       <option value="">-- Select Scenario Type --</option>
                       <option value="Goods at Standard Rate to Registered Buyers">Goods at Standard Rate to Registered Buyers</option>
@@ -342,7 +366,7 @@ const NewInvoice = () => {
                       <option value="Sale of 3rd Schedule Goods">Sale of 3rd Schedule Goods</option>
                       <option value="Zero Rated Sale">Zero Rated Sale</option>
                     </select>
-                    {submitAttempted && errors.scenarioType && <p className="text-[10px] text-red-500 font-bold mt-1 ml-1">⚠️ {String(errors.scenarioType)}</p>}
+                    {hasAttempted && errors.scenarioType && <p className="text-[10px] text-red-500 font-bold mt-1 ml-1">⚠️ Required Field</p>}
                   </div>
                 </div>
                 <div className="w-full overflow-x-auto rounded-sm border border-stroke dark:border-strokedark mb-6 whitespace-nowrap">
@@ -390,7 +414,7 @@ const NewInvoice = () => {
                             const fTaxAmt = (amount / 100) * fTaxPer;
                             const netAmt = amount + gstAmt + fTaxAmt;
 
-                            const hasItemError = submitAttempted && errors.items && (errors.items as any)[index]?.itemName;
+                            const hasItemError = hasAttempted && errors.items && (errors.items as any)[index]?.itemName;
 
                             return (
                               <tr key={index} className="text-center bg-white dark:bg-boxdark border-b border-stroke dark:border-strokedark hover:bg-gray-50/50 dark:hover:bg-meta-4/5 transition-colors text-black dark:text-white">
@@ -398,6 +422,7 @@ const NewInvoice = () => {
                                 <td className="p-2 text-left w-[220px]">
                                   <select
                                     name={`items.${index}.itemName`}
+                                    onBlur={handleBlur}
                                     onChange={(e) => handleProductSelectionWithWH(e.target.value, index, values.dispatchWarehouse, setFieldValue)}
                                     value={item.itemName}
                                     className={`w-full px-1 py-1 exam border rounded text-xs transition-all ${hasItemError ? 'border-red-500 bg-red-50 dark:bg-red-950/20 text-red-900 focus:border-red-500' : 'border-stroke dark:border-strokedark bg-white dark:bg-boxdark focus:border-primary'}`}
@@ -410,21 +435,21 @@ const NewInvoice = () => {
                                   {Number(item.availableQty || 0).toLocaleString()}
                                 </td>
                                 <td className="p-2 text-center text-gray-400 font-mono w-[80px]">{item.hsCode || '-'}</td>
-                                <td className="p-2 w-[80px]"><input name={`items.${index}.location`} onChange={handleChange} value={item.location} className="w-full text-center outline-none bg-white dark:bg-boxdark border border-stroke dark:border-strokedark py-1 rounded text-black dark:text-white text-xs" placeholder="WH-1" /></td>
+                                <td className="p-2 w-[80px]"><input name={`items.${index}.location`} onBlur={handleBlur} onChange={handleChange} value={item.location} className="w-full text-center outline-none bg-white dark:bg-boxdark border border-stroke dark:border-strokedark py-1 rounded text-black dark:text-white text-xs" placeholder="WH-1" /></td>
                                 <td className="p-2 text-right text-gray-700 font-bold dark:text-white pr-2 w-[100px]">{rp.toFixed(2)}</td>
-                                <td className="p-2 w-[70px]"><input type="number" name={`items.${index}.extraDiscPer`} onKeyDown={blockInvalidChar} onChange={handleChange} value={item.extraDiscPer} className="w-full text-center outline-none bg-white dark:bg-boxdark border border-stroke dark:border-strokedark py-1 text-black dark:text-white rounded font-semibold text-xs" /></td>
+                                <td className="p-2 w-[70px]"><input type="number" name={`items.${index}.extraDiscPer`} onBlur={handleBlur} onKeyDown={blockInvalidChar} onChange={handleChange} value={item.extraDiscPer} className="w-full text-center outline-none bg-white dark:bg-boxdark border border-stroke dark:border-strokedark py-1 text-black dark:text-white rounded font-semibold text-xs" /></td>
                                 <td className="p-2 text-right text-gray-400 pr-2 w-[100px]">{extraDisAmt.toFixed(2)}</td>
                                 <td className="p-2 text-right text-gray-500 pr-2 dark:text-white w-[90px]">{mrp.toFixed(2)}</td>
-                                <td className="p-2 w-[70px]"><input type="number" name={`items.${index}.qty`} onKeyDown={blockInvalidChar} onChange={handleChange} value={item.qty} className="w-full text-center outline-none bg-white dark:bg-boxdark border border-primary dark:border-primary py-1 font-black text-black dark:text-white rounded text-xs" /></td>
+                                <td className="p-2 w-[70px]"><input type="number" name={`items.${index}.qty`} onBlur={handleBlur} onKeyDown={blockInvalidChar} onChange={handleChange} value={item.qty} className="w-full text-center outline-none bg-white dark:bg-boxdark border border-primary dark:border-primary py-1 font-black text-black dark:text-white rounded text-xs" /></td>
                                 <td className="p-2 text-right font-medium text-gray-600 dark:text-bodydark pr-2 w-[110px]">{grossAmount.toFixed(2)}</td>
-                                <td className="p-2 w-[70px]"><input type="number" name={`items.${index}.gstRate`} onKeyDown={blockInvalidChar} onChange={handleChange} value={item.gstRate} className="w-full text-center outline-none bg-white dark:bg-boxdark border border-stroke dark:border-strokedark py-1 text-black dark:text-white font-bold rounded text-xs" /></td>
+                                <td className="p-2 w-[70px]"><input type="number" name={`items.${index}.gstRate`} onBlur={handleBlur} onKeyDown={blockInvalidChar} onChange={handleChange} value={item.gstRate} className="w-full text-center outline-none bg-white dark:bg-boxdark border border-stroke dark:border-strokedark py-1 text-black dark:text-white font-bold rounded text-xs" /></td>
                                 <td className="p-2 text-right text-gray-400 pr-2 w-[100px]">{gstAmt.toFixed(2)}</td>
                                 <td className="p-2 text-right font-medium text-gray-600 dark:text-bodydark pr-2 w-[110px]">{amount.toFixed(2)}</td>
-                                <td className="p-2 text-center text-gray-500 font-bold w-[70px]">{fTaxPer}%</td>
+                                <td className="p-2 text-center text-gray-500 font-bold w-[70px]">{item.fTaxPer || 0}%</td>
                                 <td className="p-2 text-right text-gray-400 pr-2 w-[100px]">{fTaxAmt.toFixed(2)}</td>
                                 <td className="p-2 text-right text-black dark:text-white font-black bg-slate-50/10 pr-2 w-[120px]">{netAmt.toFixed(2)}</td>
                                 <td className="p-2 text-center w-[50px]">
-                                  <button type="button" onClick={() => remove(index)} className="text-red-500 font-bold hover:text-red-700 hover:scale-110 transition text-sm">✕</button>
+                                  <button type="button" onClick={() => remove(index)} className="text-red-500 font-bold hover:text-red-700 transition text-sm">✕</button>
                                 </td>
                               </tr>
                             );
@@ -440,10 +465,50 @@ const NewInvoice = () => {
                   </table>
                 </div>
                 <div className="flex flex-col md:flex-row justify-between gap-10 mt-6 px-4 pb-4">
-                  <div className="flex flex-col gap-4 w-full md:w-1/2 border border-stroke p-4 rounded dark:border-strokedark bg-slate-50/10">
+                  <div className="flex flex-col gap-4 w-full md:w-1/2 border border-stroke p-4 rounded dark:border-strokedark bg-slate-50/10 space-y-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-primary dark:text-white mb-2">Transport / Courier Carrier: *</h4>
+                        <select
+                          name="transportName"
+                          value={values.transportName}
+                          onBlur={handleBlur}
+                          onChange={(e) => {
+                            const choice = e.target.value;
+                            setFieldValue('transportName', choice);
+                            if (choice === 'Self Pick' || choice === 'No Transport') {
+                              setFieldValue('transportCharges', 0);
+                            }
+                          }}
+                          className={`w-full border rounded p-2 bg-white dark:bg-boxdark outline-none font-bold text-xs ${hasAttempted && errors.transportName ? 'border-red-500 text-red-600 focus:border-red-500' : 'border-stroke dark:border-strokedark text-black dark:text-white focus:border-primary'}`}
+                        >
+                          <option value="Self Pick">Self Pick (Customer Collect)</option>
+                          <option value="No Transport">No Transport (Handover)</option>
+                          {transportFleet.map(t => (
+                            <option key={t.id} value={t.name}>{t.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-primary dark:text-white mb-2">Freight Cost (0 OR 100-500): *</h4>
+                        <input
+                          type="number"
+                          name="transportCharges"
+                          onKeyDown={blockInvalidChar}
+                          onBlur={handleBlur}
+                          disabled={values.transportName === 'Self Pick' || values.transportName === 'No Transport'}
+                          onChange={handleChange}
+                          value={values.transportCharges}
+                          className={`w-full rounded border p-2 font-black text-right text-xs outline-none focus:border-primary ${values.transportName === 'Self Pick' || values.transportName === 'No Transport' ? 'bg-gray-100 dark:bg-meta-4/20 cursor-not-allowed text-gray-400' : 'bg-white dark:bg-boxdark text-primary'}`}
+                        />
+                        {hasAttempted && errors.transportCharges && <p className="text-red-500 font-bold text-[10px] mt-1">⚠️ {String(errors.transportCharges)}</p>}
+                      </div>
+                    </div>
+
+                    <div className="border-t border-stroke dark:border-strokedark my-1"></div>
                     <div>
                       <h4 className="text-xs font-bold uppercase tracking-wider text-success mb-2">1. Front Counter Cash Received Box (PKR)</h4>
-                      <input type="number" name="cashAmountPaid" min="0" onKeyDown={blockInvalidChar} onChange={handleChange} value={values.cashAmountPaid || 0} placeholder="0.00" className="w-full rounded border border-stroke p-2 bg-transparent text-right font-bold text-success text-sm focus:border-primary" />
+                      <input type="number" name="cashAmountPaid" min="0" onBlur={handleBlur} onKeyDown={blockInvalidChar} onChange={handleChange} value={values.cashAmountPaid || 0} placeholder="0.00" className="w-full rounded border border-stroke p-2 bg-transparent text-right font-bold text-success text-sm focus:border-primary" />
                     </div>
                     <div className="border-t border-stroke dark:border-strokedark my-1"></div>
                     <div>
@@ -453,14 +518,14 @@ const NewInvoice = () => {
                           <div className="space-y-3">
                             {values.bankPayments.map((payment: any, index: number) => (
                               <div key={index} className="flex items-center gap-2">
-                                <select name={`bankPayments.${index}.selectedBank`} onChange={handleChange} value={payment.selectedBank || ''} className="flex-1 border border-stroke p-2 text-xs rounded outline-none focus:border-primary bg-white dark:bg-boxdark font-semibold text-black dark:text-white">
+                                <select name={`bankPayments.${index}.selectedBank`} onBlur={handleBlur} onChange={handleChange} value={payment.selectedBank || ''} className="flex-1 border border-stroke p-2 text-xs rounded outline-none focus:border-primary bg-white dark:bg-boxdark font-semibold text-black dark:text-white">
                                   <option value="">-- Choose Account Wire --</option>
                                   {banks.map((b) => {
                                     const isAlreadySelected = values.bankPayments.some((p: any, pIdx: number) => p.selectedBank === b.accountTitle && pIdx !== index);
                                     return <option key={b.id} value={b.accountTitle} disabled={isAlreadySelected}>{b.bankName} - {b.accountTitle} {isAlreadySelected ? '(Selected)' : ''}</option>;
                                   })}
                                 </select>
-                                <input type="number" name={`bankPayments.${index}.bankAmount`} min="0" onKeyDown={blockInvalidChar} onChange={handleChange} value={payment.bankAmount || 0} placeholder="Amount" className="w-28 border border-stroke p-2 text-xs text-right rounded outline-none text-success font-bold bg-white dark:bg-boxdark" />
+                                <input type="number" name={`bankPayments.${index}.bankAmount`} min="0" onBlur={handleBlur} onKeyDown={blockInvalidChar} onChange={handleChange} value={payment.bankAmount || 0} placeholder="Amount" className="w-28 border border-stroke p-2 text-xs text-right rounded outline-none text-success font-bold bg-white dark:bg-boxdark" />
                                 {values.bankPayments.length > 1 && <button type="button" onClick={() => remove(index)} className="text-red-500 font-bold px-1 text-xs">✕</button>}
                               </div>
                             ))}
@@ -473,11 +538,10 @@ const NewInvoice = () => {
                       </FieldArray>
                     </div>
                   </div>
-
                   <div className="w-full md:w-1/3 space-y-2 text-xs text-black dark:text-bodydark">
                     <div className="flex items-center justify-between border-b pb-1 dark:border-strokedark">
                       <span className="font-semibold text-gray-500">WH Tax %:</span>
-                      <input type="number" name="whTaxPercentage" onKeyDown={blockInvalidChar} onChange={handleChange} value={values.whTaxPercentage} className="w-20 border p-1 rounded text-right outline-none bg-white dark:bg-boxdark text-black dark:text-white border-stroke" />
+                      <input type="number" name="whTaxPercentage" onBlur={handleBlur} onKeyDown={blockInvalidChar} onChange={handleChange} value={values.whTaxPercentage} className="w-20 border p-1 rounded text-right outline-none bg-white dark:bg-boxdark text-black dark:text-white border-stroke" />
                     </div>
                     <div className="flex justify-between border-b pb-1 dark:border-strokedark"><span>Total Quantity:</span><b className="text-success text-sm">{(values.items.reduce((acc: number, item: any) => acc + (Number(item.qty) || 0), 0)).toFixed(2)}</b></div>
                     <div className="flex justify-between border-b pb-1 dark:border-strokedark">
@@ -539,7 +603,8 @@ const NewInvoice = () => {
                             return acc + (amount + ((gstBase / 100) * gstRate) + ((amount / 100) * fTaxPer));
                           }, 0);
                           const whTaxAmt = (baseTotal / 100) * (values.whTaxPercentage || 0);
-                          return (baseTotal - whTaxAmt).toLocaleString(undefined, { minimumFractionDigits: 2 });
+                          const netAmtWithFreight = (baseTotal - whTaxAmt) + (Number(values.transportCharges) || 0);
+                          return netAmtWithFreight.toLocaleString(undefined, { minimumFractionDigits: 2 });
                         })()}
                       </b>
                     </div>
@@ -547,8 +612,8 @@ const NewInvoice = () => {
                 </div>
 
                 <div className="pt-4 mt-4 border-t border-stroke dark:border-strokedark flex justify-between items-center bg-gray-50 dark:bg-meta-4/5 p-4 rounded-sm">
-                  <button type="button" onClick={() => navigate('/sales/invoice/list')} className="rounded border border-stroke dark:border-strokedark py-2.5 px-10 font-semibold text-sm text-black dark:text-white hover:bg-gray-100 dark:hover:bg-meta-4 transition cursor-pointer">Cancel</button>
-                  <button type="submit" disabled={loading} onClick={() => setSubmitAttempted(true)} className="bg-success text-white py-2.5 px-12 rounded font-semibold text-sm hover:bg-opacity-90 transition shadow-sm font-bold cursor-pointer">{loading ? <Spinner /> : isEditMode ? 'Update Invoice' : 'Save Record'}</button>
+                  <button type="button" onClick={() => navigate('/sales/invoice/list')} className="rounded border border-stroke dark:border-strokedark py-2.5 px-10 font-semibold text-sm text-black dark:text-white hover:bg-gray-100 transition cursor-pointer">Cancel</button>
+                  <button type="submit" className="bg-success text-white py-2.5 px-12 rounded font-semibold text-sm hover:bg-opacity-90 transition shadow-sm font-bold cursor-pointer">Save Record</button>
                 </div>
               </Form>
             );

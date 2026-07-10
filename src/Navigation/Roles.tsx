@@ -50,6 +50,11 @@ import AddPurchaseReturn from '../pages/Purchase/Purchase Return/AddPurchaseRetu
 import PurchaseReturnReceiptList from '../pages/Purchase/Purchase Return Receipt/PurchaseReturnReceiptList';
 import AddPurchaseReturnReceipt from '../pages/Purchase/Purchase Return Receipt/AddPurchaseReturnReceipt';
 import ReportDashboard from '../pages/Reports/ReportDashboard';
+import SalesReport from '../pages/Reports/Sales Report/SalesReport';
+import PurchaseReport from '../pages/Reports/Purchase Report/PurchaseReports';
+import StockReport from '../pages/Reports/Stock Report/StockReport';
+import AccountReport from '../pages/Reports/Account Report/AccountReport';
+import SaleReportPrint from '../pages/Reports/Sales Report/SaleReportPrint';
 
 export const adminRoutes = [
   {
@@ -242,6 +247,30 @@ export const adminRoutes = [
         path: '/Reports/Reports-Dashboard',
         component: <ReportDashboard/>,
         icon: MdSpaceDashboard
+      },
+      {
+        label: 'Sales Reports',
+        path: '/Reports/Sales-Report',
+        component: <SalesReport/>,
+
+      },
+      {
+        label: 'Purchase Reports',
+        path: '/Reports/Purchase-Report',
+        component: <PurchaseReport/>,
+        
+      },
+      {
+        label: 'Stock Reports',
+        path: '/Reports/Stock-Report',
+        component: <StockReport/>,
+
+      },
+      {
+        label: 'Account Reports',
+        path: '/Reports/Account-Report',
+        component: <AccountReport/>,
+
       }
     ]
   },
@@ -368,6 +397,11 @@ export const adminRoutes = [
   {
     path: '/Purchase/Purchase-Return-Receipt/Add',
     component: <AddPurchaseReturnReceipt/>,
+    hideFromSidebar: true
+  },
+  {
+    path: '/Reports/Sales-Report/Print',
+    component: <SaleReportPrint/>,
     hideFromSidebar: true
   }
 ];
