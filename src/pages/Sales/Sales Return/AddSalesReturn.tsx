@@ -1,442 +1,491 @@
-import React, { useState, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { Formik, Form, FieldArray } from 'formik';
+import React, { useState, useEffect, useRef } from 'react';
+import { FieldArray, Formik, Form } from 'formik';
 import * as Yup from 'yup';
-import { supabase } from '../../../Context/supabaseClient';
 import { toast } from 'react-hot-toast';
+import { supabase } from '../../../Context/supabaseClient';
 import Spinner from '../../../ui/Spinner';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 const AddSalesReturn = () => {
-  const [loading, setLoading] = useState(false);
-  const [fetchingInvoice, setFetchingInvoice] = useState(false);
-  const [warehouses, setWarehouses] = useState<any[]>([]);
   const navigate = useNavigate();
   const location = useLocation();
 
-  const editData = location.state?.returnRecord;
-  const historyInvoiceData = location.state?.invoice;
-  const isEditMode = !!editData;
+  const routeStateData = location.state?.invoice || location.state?.item || location.state?.record || location.state?.returnRecord;
+  const isEditMode = !!routeStateData && (routeStateData.hasOwnProperty('return_status') || routeStateData.hasOwnProperty('original_invoice_no') || routeStateData.hasOwnProperty('total_amount'));
+  const isDirectInvoiceLink = !!routeStateData && !isEditMode;
 
-  const [initialFormValues, setInitialFormValues] = useState({
-    originalInvoiceNo: '',
-    customerName: '',
-    salesman: '',
-    scenarioType: '',
-    returnWarehouseTo: editData?.return_warehouse_to || '',
-    returnDate: new Date().toISOString().split('T')[0],
-    returnType: 'On Credit',
-    remarks: '',
-    items: [] as any[]
+  const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(false);
+  const [defaultInvoices, setDefaultInvoices] = useState<any[]>([]);
+  const [filteredInvoices, setFilteredInvoices] = useState<any[]>([]);
+  const [isInvoiceAlreadyReturned, setIsInvoiceAlreadyReturned] = useState(false);
+  const [banksList, setBanksList] = useState<any[]>([]);
+  const [invoiceSearchQuery, setInvoiceSearchQuery] = useState('');
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isSelectionMade, setIsSelectionMade] = useState(isEditMode || isDirectInvoiceLink);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // --- ✅ NEW TRACKING STATES: Remembers the original invoice cash layout counters ---
+  const [origInvoiceCashMetrics, setOrigInvoiceCashMetrics] = useState({
+    grandTotal: 0,
+    cashReceivedBox: 0
   });
 
-  const handleInvoiceLookup = async (invoiceId: string, setFieldValue: any) => {
-    if (!invoiceId.toString().trim()) return;
+  const [returnInitData, setReturnInitData] = useState<any>({
+    returnNo: isEditMode ? `RTN-${String(routeStateData.id).padStart(4, '0')}` : '(Auto Generated)',
+    returnDate: routeStateData?.return_date || new Date().toISOString().split('T'),
+    invoiceIdRef: isEditMode ? routeStateData.original_invoice_no?.replace('INV-', '') : (isDirectInvoiceLink ? routeStateData.id : ''),
+    customerName: routeStateData?.customer_name || '',
+    settlementMode: routeStateData?.settlement_mode || 'Cash',
+    selectedBankAccountId: routeStateData?.linked_bank_title || '',
+    payoutAmountPaid: routeStateData?.payout_amount_paid || 0,
+    items: routeStateData?.items || [{ itemName: '', qty: 1, rp: 0, gstRate: 18, amount: 0 }]
+  });
+  useEffect(() => {
+    const fetchMetadataCatalog = async () => {
+      try {
+        setInitialLoading(true);
+        const { data: invoicesData } = await supabase
+          .from('sales_invoices')
+          .select('id, customer_name, total_amount, cash_amount_paid, items')
+          .order('id', { ascending: false });
 
-    try {
-      setFetchingInvoice(true);
-      const { data: invData, error } = await supabase
-        .from('sales_invoices')
-        .select('*')
-        .eq('id', Number(invoiceId))
-        .single();
+        const { data: bankAccounts } = await supabase
+          .from('banks')
+          .select('id, bankName, accountTitle');
 
-      if (error) {
-        toast.error('Invoice not found in database record layers.');
-        return;
-      }
-
-      if (invData) {
-        setFieldValue('originalInvoiceNo', String(invData.id));
-        setFieldValue('customerName', invData.customer_name || '');
-        setFieldValue('salesman', invData.salesman || 'General');
-        setFieldValue('scenarioType', invData.scenario_type || '');
-        setFieldValue('returnWarehouseTo', invData.dispatch_warehouse || '');
-
-        const mappedItems = (invData.items || []).map((item: any) => ({
-          itemName: item.itemName || '',
-          location: item.location || '',
-          rp: Number(item.rp) || 0,
-          mrp: Number(item.mrp) || 0,
-          gstRate: Number(item.gstRate) || 0,
-          fTaxPer: Number(item.fTaxPer) || 0,
-          qty: Number(item.qty) || 1,
-          returnedQty: Number(item.qty) || 1
-        }));
-
-        setFieldValue('items', mappedItems);
-
-        const originalStatus = invData.receipt_status || invData.sale_status || '';
-        if (originalStatus === 'Unpaid') {
-          setFieldValue('returnType', 'No Return');
-        } else {
-          setFieldValue('returnType', 'On Credit');
+        if (bankAccounts) setBanksList(bankAccounts);
+        if (invoicesData) {
+          setDefaultInvoices(invoicesData);
+          setFilteredInvoices(invoicesData.slice(0, 3));
         }
+
+        const lookupId = isEditMode ? routeStateData.original_invoice_no?.replace('INV-', '') : (isDirectInvoiceLink ? routeStateData.id : null);
+        if (lookupId && invoicesData) {
+          const matchedInv = invoicesData.find(i => String(i.id) === String(lookupId));
+          if (matchedInv) {
+            setOrigInvoiceCashMetrics({
+              grandTotal: Number(matchedInv.total_amount || 0),
+              cashReceivedBox: Number(matchedInv.cash_amount_paid || 0)
+            });
+          }
+        }
+
+        if (isEditMode && routeStateData) {
+          const extractedCleanInvoiceId = String(routeStateData.original_invoice_no || '').replace('INV-', '');
+          setInvoiceSearchQuery(String(routeStateData.original_invoice_no || ''));
+          setIsSelectionMade(true);
+          setIsDropdownOpen(false);
+
+          if ((!routeStateData.items || routeStateData.items.length === 0 || !routeStateData.items?.itemName) && invoicesData) {
+            const originInvoiceMatch = invoicesData.find(i => String(i.id) === String(extractedCleanInvoiceId));
+            if (originInvoiceMatch) {
+              setReturnInitData((prev: any) => ({
+                ...prev,
+                customerName: originInvoiceMatch.customer_name,
+                items: originInvoiceMatch.items || prev.items
+              }));
+            }
+          }
+        } else if (isDirectInvoiceLink && routeStateData) {
+          setInvoiceSearchQuery(`INV-${routeStateData.id} (${routeStateData.customer_name})`);
+          setIsSelectionMade(true);
+          verifyInvoiceReturnStateGuard(routeStateData.id);
+        }
+      } catch (err: any) {
+        toast.error('Failed to load tracking data registers: ' + err.message);
+      } finally {
+        setInitialLoading(false);
       }
-    } catch (err: any) {
-      console.error(err.message);
-    } finally {
-      setFetchingInvoice(false);
+    };
+    fetchMetadataCatalog();
+  }, [routeStateData, isEditMode, isDirectInvoiceLink]);
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
+  useEffect(() => {
+    if (isSelectionMade || isEditMode) return;
+    const term = invoiceSearchQuery.trim().toLowerCase();
+    if (!term || term.startsWith('inv-')) {
+      setFilteredInvoices(defaultInvoices.slice(0, 3));
+      return;
+    }
+
+    const filtered = defaultInvoices.filter(inv => {
+      const cleanNum = term.replace(/\D/g, '');
+      if (cleanNum && String(inv.id) === cleanNum) return true;
+      return (
+        String(inv.id).toLowerCase().includes(term) ||
+        `inv-${inv.id}`.toLowerCase().includes(term) ||
+        String(inv.customer_name).toLowerCase().includes(term)
+      );
+    });
+
+    setFilteredInvoices(filtered);
+  }, [invoiceSearchQuery, defaultInvoices, isSelectionMade, isEditMode]);
+
+  const verifyInvoiceReturnStateGuard = async (invoiceId: string | number) => {
+    if (!invoiceId || isEditMode) return;
+    try {
+      const targetSearchKey = String(invoiceId).trim().toLowerCase();
+      const { data: matchedRecords } = await supabase
+        .from('sales_returns')
+        .select('original_invoice_no');
+
+      const isFound = (matchedRecords || []).some(r => {
+        const cleanRef = String(r.original_invoice_no || '').trim().toLowerCase();
+        return cleanRef === targetSearchKey || cleanRef === `inv-${targetSearchKey}` || cleanRef.includes(targetSearchKey);
+      });
+
+      setIsInvoiceAlreadyReturned(isFound);
+    } catch (err) {
+      console.error(err);
     }
   };
 
-  useEffect(() => {
-    const fetchReturnMetadata = async () => {
-      try {
-        const { data: whData } = await supabase.from('inventory_locations').select('id, name').order('name', { ascending: true });
-        if (whData) setWarehouses(whData);
-      } catch (err: any) {
-        console.error(err.message);
-      }
-    };
-    fetchReturnMetadata();
-  }, []);
-  useEffect(() => {
-    if (isEditMode && editData) {
-      setInitialFormValues({
-        originalInvoiceNo: editData.original_invoice_no || '',
-        customerName: editData.customer_name || '',
-        salesman: editData.salesman || '',
-        scenarioType: editData.scenario_type || '',
-        returnWarehouseTo: editData.return_warehouse_to || '',
-        returnDate: editData.return_date || editData.created_at?.split('T')[0],
-        returnType: editData.return_type || 'On Credit',
-        remarks: editData.remarks || '',
-        items: editData.items || []
-      });
-    } else if (historyInvoiceData) {
-      const originalStatus = historyInvoiceData.receipt_status || historyInvoiceData.sale_status || '';
-      const defaultSettlement = (originalStatus === 'Unpaid') ? 'No Return' : 'On Credit';
-
-      setInitialFormValues({
-        originalInvoiceNo: String(historyInvoiceData.id || ''),
-        customerName: historyInvoiceData.customer_name || '',
-        salesman: historyInvoiceData.salesman || 'General',
-        scenarioType: historyInvoiceData.scenario_type || '',
-        returnWarehouseTo: historyInvoiceData.dispatch_warehouse || '',
-        returnDate: new Date().toISOString().split('T')[0],
-        returnType: defaultSettlement,
-        remarks: '',
-        items: (historyInvoiceData.items || []).map((item: any) => ({
-          itemName: item.itemName || '',
-          location: item.location || '',
-          rp: Number(item.rp) || 0,
-          mrp: Number(item.mrp) || 0,
-          gstRate: Number(item.gstRate) || 0,
-          fTaxPer: Number(item.fTaxPer) || 0,
-          qty: Number(item.qty) || 1,
-          returnedQty: Number(item.qty) || 1
-        }))
-      });
-    }
-  }, [editData, isEditMode, historyInvoiceData]);
-
   const validationSchema = Yup.object().shape({
-    originalInvoiceNo: Yup.string().required('Original Invoice # is mandatory'),
+    invoiceIdRef: Yup.string().required('Required'),
     customerName: Yup.string().required('Required'),
-    returnWarehouseTo: Yup.string().required('Return warehouse destination point is mandatory'),
+    settlementMode: Yup.string().oneOf(['Cash', 'Bank']).required('Required'),
+    selectedBankAccountId: Yup.string().when('settlementMode', {
+      is: 'Bank',
+      then: (schema) => schema.required('Required'),
+      otherwise: (schema) => schema.notRequired()
+    }),
+    payoutAmountPaid: Yup.number().min(0).typeError('Must be a number').required('Required'),
     items: Yup.array().of(
       Yup.object().shape({
         itemName: Yup.string().required('Required'),
-        returnedQty: Yup.number()
-          .typeError('Must be a number')
-          .min(1, 'Min 1')
-          .required('Required')
+        qty: Yup.number().min(1).required('Required')
       })
     ).min(1)
   });
 
   const blockInvalidChar = (e: React.KeyboardEvent<HTMLInputElement>) =>
     ['-', 'e', 'E', '+'].includes(e.key) && e.preventDefault();
+
+  if (initialLoading) return <div className="flex h-48 items-center justify-center"><Spinner /></div>;
   return (
-    <div className="mx-auto max-w-full text-textColor">
+    <div className="mx-auto max-w-7xl flex flex-col gap-6 text-black dark:text-white text-xs">
       <div className="rounded-sm border border-stroke bg-white shadow-default dark:border-strokedark dark:bg-boxdark">
         <div className="flex items-center justify-between border-b border-stroke py-4 px-6.5 dark:border-strokedark">
           <h3 className="font-semibold text-black dark:text-white text-base">
-            {isEditMode ? 'Modify Sales Return Debit Note' : 'Add New Sales Return'}
+            {isEditMode ? 'Modify Sales Return Note Record' : 'Compile Sales Return Note Credit Slip'}
           </h3>
-          <button onClick={() => navigate('/Sales-Return/Debit-Notes/List')} className="text-sm font-medium text-primary hover:underline">
-            {isEditMode ? 'Back to List' : 'See List'}
-          </button>
+          <button onClick={() => navigate('/Sales-Return/Debit-Notes/List')} className="text-sm font-medium text-primary hover:underline">See Logs List</button>
         </div>
 
         <Formik
-          initialValues={initialFormValues}
-          enableReinitialize={true}
+          initialValues={returnInitData}
           validationSchema={validationSchema}
+          enableReinitialize={true}
           onSubmit={async (values) => {
-            if (values.returnType === 'No Return') {
-              toast.error('Submission Blocked: Unpaid invoices cannot accept active returns. Row entry is rejected!');
+            if (isInvoiceAlreadyReturned && !isEditMode) {
+              toast.error('Audit Block: Submission denied. Already settles as returned.');
               return;
             }
 
-            setLoading(true);
-            let totalQty = 0;
-            let totalAmountBeforeTax = 0;
-            let totalGstAmount = 0;
-            let totalNetAmt = 0;
+            const itemsTotalSum = values.items.reduce((acc: number, item: any) => {
+              const itemQty = Number(item.qty) || 0;
+              const itemRp = Number(item.rp) || 0;
+              const itemGst = Number(item.gstRate || item.gst_rate || 18);
+              const itemFTax = Number(item.fTaxPer || item.f_tax_per || 0);
+              const base = itemRp * itemQty;
+              return acc + (base + (base / 100 * itemGst) + (base / 100 * itemFTax));
+            }, 0);
 
-            const isThirdSchedule = values.scenarioType === "Sale of 3rd Schedule Goods";
-
-            values.items.forEach((item: any) => {
-              const rQty = Number(item.returnedQty) || 0;
-              const rp = Number(item.rp) || 0;
-              const mrp = Number(item.mrp) || 0;
-              const gstRate = Number(item.gstRate) || 0;
-              const fTaxPer = Number(item.fTaxPer) || 0;
-
-              const basePrice = isThirdSchedule ? mrp : rp;
-              const lineAmount = basePrice * rQty;
-              const lineGst = (lineAmount / 100) * gstRate;
-              const lineFTax = (lineAmount / 100) * fTaxPer;
-
-              totalQty += rQty;
-              totalAmountBeforeTax += lineAmount;
-              totalGstAmount += lineGst;
-              totalNetAmt += (lineAmount + lineGst + lineFTax);
-            });
+            const payoutAmountPaid = Number(values.payoutAmountPaid) || 0;
+            const finalCalculatedReturnStatus = payoutAmountPaid >= itemsTotalSum ? 'Paid' : 'On Credit';
 
             const databasePayload = {
-              original_invoice_no: values.originalInvoiceNo,
+              original_invoice_no: `INV-${values.invoiceIdRef}`,
               customer_name: values.customerName,
-              salesman: values.salesman,
-              scenario_type: values.scenarioType,
-              return_warehouse_to: values.returnWarehouseTo,
               return_date: values.returnDate,
-              return_type: values.returnType,
-              remarks: values.remarks,
-              total_quantity: totalQty,
-              total_amount: totalAmountBeforeTax,
-              total_gst_amount: totalGstAmount,
-              total_net_amount: totalNetAmt,
+              settlement_mode: values.settlementMode,
+              linked_bank_title: values.settlementMode === 'Bank' ? values.selectedBankAccountId : null,
+              payout_amount_paid: payoutAmountPaid,
+              total_amount: itemsTotalSum,
+              return_status: finalCalculatedReturnStatus,
               items: values.items
             };
 
             try {
+              setLoading(true);
               if (isEditMode) {
-                const { data: oldReturn } = await supabase.from('sales_returns').select('items, return_warehouse_to').eq('id', editData.id).single();
-                if (oldReturn?.items) {
-                  for (const oldItem of oldReturn.items) {
-                    const { data: p } = await supabase.from('products').select('current_stock').eq('product_name', oldItem.itemName).single();
-                    if (p) await supabase.from('products').update({ current_stock: Math.max(0, (Number(p.current_stock) || 0) - Number(oldItem.returnedQty)) }).eq('product_name', oldItem.itemName);
-
-                    const { data: wh } = await supabase.from('warehouse_inventory').select('id, quantity').eq('product_name', oldItem.itemName).eq('warehouse_name', oldReturn.return_warehouse_to).maybeSingle();
-                    if (wh) await supabase.from('warehouse_inventory').update({ quantity: Math.max(0, (Number(wh.quantity) || 0) - Number(oldItem.returnedQty)) }).eq('id', wh.id);
-                  }
-                }
-                const { error } = await supabase.from('sales_returns').update(databasePayload).eq('id', editData.id);
+                const { error } = await supabase
+                  .from('sales_returns')
+                  .update(databasePayload)
+                  .eq('id', routeStateData.id);
                 if (error) throw error;
-                for (const newItem of values.items) {
-                  const { data: p } = await supabase.from('products').select('current_stock').eq('product_name', newItem.itemName).single();
-                  if (p) await supabase.from('products').update({ current_stock: (Number(p.current_stock) || 0) + Number(newItem.returnedQty) }).eq('product_name', newItem.itemName);
-
-                  const { data: wh } = await supabase.from('warehouse_inventory').select('id, quantity').eq('product_name', newItem.itemName).eq('warehouse_name', values.returnWarehouseTo).maybeSingle();
-                  if (wh) {
-                    await supabase.from('warehouse_inventory').update({ quantity: (Number(wh.quantity) || 0) + Number(newItem.returnedQty) }).eq('id', wh.id);
-                  } else {
-                    await supabase.from('warehouse_inventory').insert([{ product_name: newItem.itemName, warehouse_name: values.returnWarehouseTo, quantity: Number(newItem.returnedQty) }]);
-                  }
-                }
-                toast.success('Sales Return Note updated successfully!');
+                toast.success('Sales Return Entry Modified Successfully!');
               } else {
                 const { error } = await supabase.from('sales_returns').insert([databasePayload]);
                 if (error) throw error;
-                for (const item of values.items) {
-                  const { data: p } = await supabase.from('products').select('current_stock').eq('product_name', item.itemName).single();
-                  if (p) await supabase.from('products').update({ current_stock: (Number(p.current_stock) || 0) + Number(item.returnedQty) }).eq('product_name', item.itemName);
 
-                  const { data: wh } = await supabase.from('warehouse_inventory').select('id, quantity').eq('product_name', item.itemName).eq('warehouse_name', values.returnWarehouseTo).maybeSingle();
-                  if (wh) {
-                    await supabase.from('warehouse_inventory').update({ quantity: (Number(wh.quantity) || 0) + Number(item.returnedQty) }).eq('id', wh.id);
-                  } else {
-                    await supabase.from('warehouse_inventory').insert([{ product_name: item.itemName, warehouse_name: values.returnWarehouseTo, quantity: Number(item.returnedQty) }]);
+                for (const item of values.items) {
+                  const { data: activeProd } = await supabase.from('products').select('current_stock').eq('product_name', item.itemName).single();
+                  if (activeProd) {
+                    await supabase.from('products').update({ current_stock: (Number(activeProd.current_stock) || 0) + Number(item.qty) }).eq('product_name', item.itemName);
                   }
                 }
-                toast.success('Sales Return Note saved and stock reverted successfully!');
+                toast.success('Sales Return Registered!');
               }
               navigate('/Sales-Return/Debit-Notes/List');
             } catch (err: any) {
               toast.error(err.message);
-            } values;
-            setLoading(false);
+            } finally {
+              setLoading(false);
+            }
           }}
         >
-          {({ values, handleChange, setFieldValue }) => {
-            const originalStatus = historyInvoiceData?.receipt_status || historyInvoiceData?.sale_status || '';
-            const isInvoiceUnpaid = originalStatus === 'Unpaid';
+          {({ values, handleChange, handleBlur, setFieldValue, errors, touched, submitCount }) => {
+            const hasAttempted = submitCount > 0;
             return (
-              <Form className="p-6">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-x-6 gap-y-4 mb-6 text-sm">
+              <Form className="p-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 items-end">
                   <div>
-                    <label className="block font-medium text-black dark:text-white mb-1.5 text-xs uppercase tracking-wide">Return No:</label>
-                    <p className="text-primary font-bold text-sm">
-                      {isEditMode ? `RTN-${String(editData.id).padStart(4, '0')}` : '(Auto Generated)'}
-                    </p>
+                    <label className="block font-medium mb-1">Return Memo ID Code #:</label>
+                    <p className="text-danger font-bold text-sm">{values.returnNo}</p>
                   </div>
                   <div>
-                    <label className="block font-medium text-black dark:text-white mb-1.5 text-xs uppercase tracking-wide">Original Invoice No: *</label>
-                    <div className="relative flex">
-                      <input type="text" name="originalInvoiceNo" onChange={handleChange} onBlur={(e) => handleInvoiceLookup(e.target.value, setFieldValue)} value={values.originalInvoiceNo} className="w-full rounded border border-stroke p-2 bg-transparent dark:border-strokedark outline-none focus:border-primary text-xs font-bold text-black dark:text-white" placeholder="Type Invoice ID (e.g. 12)" disabled={isEditMode} required />
-                      {fetchingInvoice && (
-                        <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                          <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                        </div>
-                      )}
-                    </div>
+                    <label className="block font-medium mb-1">Processing Return Date:</label>
+                    <input type="date" name="returnDate" onChange={handleChange} value={values.returnDate} className="w-full rounded border border-stroke p-2 text-sm bg-white dark:bg-boxdark font-semibold outline-none text-black dark:text-white" />
                   </div>
-                  <div>
-                    <label className="block font-medium text-black dark:text-white mb-1.5 text-xs uppercase tracking-wide">Customer Name:</label>
-                    <input type="text" name="customerName" readOnly value={values.customerName} className="w-full rounded border border-stroke p-2 bg-gray-100 dark:bg-meta-4 outline-none text-xs font-semibold text-gray-600 dark:text-gray-300" placeholder="Auto-populated" />
+
+                  <div className="relative space-y-1" ref={dropdownRef}>
+                    <label className="block font-medium text-primary font-bold">Search Invoice (Type ID or Customer): *</label>
+                    <input
+                      type="text"
+                      disabled={isEditMode}
+                      placeholder="🔍 Search Invoice sequence number..."
+                      value={invoiceSearchQuery}
+                      onFocus={() => {
+                        if (!isEditMode) {
+                          setIsSelectionMade(false);
+                          setIsDropdownOpen(true);
+                        }
+                      }}
+                      onChange={(e) => {
+                        if (!isEditMode) {
+                          setInvoiceSearchQuery(e.target.value);
+                          setIsSelectionMade(false);
+                          setIsDropdownOpen(true);
+                          if (!e.target.value) {
+                            setFieldValue('invoiceIdRef', '');
+                            setFieldValue('customerName', '');
+                            setFieldValue('items', []);
+                            setIsInvoiceAlreadyReturned(false);
+                            setOrigInvoiceCashMetrics({ grandTotal: 0, cashReceivedBox: 0 });
+                          }
+                        }
+                      }}
+                      className={`w-full rounded border p-2 text-xs font-bold outline-none focus:border-primary ${isEditMode ? 'bg-gray-100 dark:bg-meta-4/20 text-gray-500 cursor-not-allowed' : 'bg-white dark:bg-boxdark text-black dark:text-white'} ${hasAttempted && errors.invoiceIdRef && !values.invoiceIdRef ? 'border-red-500 bg-red-50 dark:bg-red-950/20' : 'border-stroke dark:border-strokedark'}`}
+                    />
+
+                    {isDropdownOpen && !isSelectionMade && !isEditMode && (
+                      <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-boxdark border border-stroke dark:border-strokedark rounded shadow-2xl z-99999 max-h-48 overflow-y-auto scrollbar-thin">
+                        {filteredInvoices.length === 0 ? (
+                          <div className="p-3 text-center text-xs text-gray-400 font-medium italic">No matching open invoices.</div>
+                        ) : (
+                          filteredInvoices.map(inv => (
+                            <div
+                              key={inv.id}
+                              onClick={() => {
+                                setFieldValue('invoiceIdRef', inv.id);
+                                setFieldValue('customerName', inv.customer_name);
+                                setFieldValue('items', inv.items || []);
+                                setInvoiceSearchQuery(`INV-${inv.id} (${inv.customer_name})`);
+                                setIsSelectionMade(true);
+                                verifyInvoiceReturnStateGuard(inv.id);
+                                setOrigInvoiceCashMetrics({
+                                  grandTotal: Number(inv.total_amount || 0),
+                                  cashReceivedBox: Number(inv.cash_amount_paid || 0)
+                                });
+                                setIsDropdownOpen(false);
+                              }}
+                              className={`p-2.5 hover:bg-slate-100 dark:hover:bg-meta-4 cursor-pointer text-xs font-bold text-black dark:text-white border-b border-stroke last:border-0 duration-100`}
+                            >
+                              📄 INV-{String(inv.id).padStart(4, '0')} - {inv.customer_name} (Rs. {Number(inv.total_amount || 0).toLocaleString()})
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                    {hasAttempted && errors.invoiceIdRef && !values.invoiceIdRef && <p className="text-red-500 font-bold text-[10px] mt-0.5">⚠️ Required Field</p>}
                   </div>
+
                   <div>
-                    <label className="block font-medium text-black dark:text-white mb-1.5 text-xs uppercase tracking-wide">Return Date:</label>
-                    <input type="date" name="returnDate" onChange={handleChange} value={values.returnDate} className="w-full rounded border border-stroke p-2 bg-transparent dark:border-strokedark outline-none focus:border-primary text-xs text-black dark:text-white" />
+                    <label className="block font-medium mb-1">Customer / Account Title:</label>
+                    <input type="text" name="customerName" disabled value={values.customerName} className="w-full rounded border border-stroke p-2 text-sm bg-gray-100 dark:bg-meta-4/20 text-gray-500 font-bold outline-none cursor-not-allowed" placeholder="Linked Account Name..." />
                   </div>
                 </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-                  <div>
-                    <label className="block font-medium text-black dark:text-white mb-1.5 text-xs uppercase tracking-wide">
-                      Return Settlement: {isInvoiceUnpaid && <span className="text-danger font-bold">(Locked - Pure Credit Sale)</span>}
-                    </label>
-                    <select
-                      name="returnType"
-                      onChange={handleChange}
-                      value={isInvoiceUnpaid ? 'No Return' : values.returnType}
-                      disabled={isInvoiceUnpaid}
-                      className={`w-full rounded border p-2 bg-transparent outline-none focus:border-primary text-xs font-semibold text-black dark:text-white ${isInvoiceUnpaid ? 'bg-gray-100 dark:bg-meta-4/40 cursor-not-allowed opacity-75 border-stroke dark:border-strokedark' : 'border-stroke dark:border-strokedark'}`}
-                    >
-                      {isInvoiceUnpaid ? (
-                        <option value="No Return">No Return (Not paid any amount in this bill yet)</option>
-                      ) : (
-                        <>
-                          <option value="On Credit">On Credit (Adjust Balance)</option>
-                          <option value="Cash">Cash (Immediate Payback)</option>
-                        </>
-                      )}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block font-medium text-black dark:text-white mb-1.5 text-xs uppercase tracking-wide">Return Warehouse (To): *</label>
-                    <select
-                      name="returnWarehouseTo"
-                      onChange={handleChange}
-                      value={values.returnWarehouseTo}
-                      className="w-full rounded border border-stroke p-2 bg-transparent outline-none focus:border-primary text-xs font-bold text-black dark:text-white dark:border-strokedark focus:border-primary"
-                    >
-                      <option value="">-- Choose Target Location --</option>
-                      {warehouses.map(w => <option key={w.id} value={w.name}>{w.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block font-medium text-black dark:text-white mb-1.5 text-xs uppercase tracking-wide">Salesman:</label>
-                    <input type="text" name="salesman" readOnly value={values.salesman} className="w-full rounded border border-stroke p-2 bg-gray-100 dark:bg-meta-4 outline-none text-xs text-gray-500 font-semibold" />
-                  </div>
-                  <div>
-                    <label className="block font-medium text-black dark:text-white mb-1.5 text-xs uppercase tracking-wide">FBR Calculation Scenario Type:</label>
-                    <input type="text" name="scenarioType" readOnly value={values.scenarioType} className="w-full rounded border border-stroke p-2 bg-gray-100 dark:bg-meta-4/30 outline-none text-xs text-gray-500 truncate font-semibold" placeholder="Auto-filled target profile layout schema" />
-                  </div>
-                </div>
-
-                <div className="overflow-x-auto mb-6 border border-stroke dark:border-strokedark rounded-sm">
-                  <table className="w-full border-collapse text-[12px] text-center min-w-[1000px]">
+                <div className="w-full overflow-x-auto rounded-sm border border-stroke dark:border-strokedark mb-6 whitespace-nowrap">
+                  <table className="w-full table-auto border-collapse text-[12px] min-w-[1200px]">
                     <thead>
-                      <tr className="bg-gray-100 dark:bg-meta-4 text-black dark:text-white font-bold uppercase tracking-wider border-b border-stroke">
-                        <th className="p-2 border-r border-stroke dark:border-strokedark w-12">S.#</th>
-                        <th className="p-2 border-r border-stroke dark:border-strokedark">Item Description</th>
-                        <th className="p-2 border-r border-stroke dark:border-strokedark w-28">R.P</th>
-                        <th className="p-2 border-r border-stroke dark:border-strokedark w-28">MRP</th>
-                        <th className="p-2 border-r border-stroke dark:border-strokedark w-24">Sold Qty</th>
-                        <th className="p-2 border-r border-stroke dark:border-strokedark w-28 bg-blue-50/50 dark:bg-meta-4/20 text-primary">Returned Qty</th>
-                        <th className="p-2 border-r border-stroke dark:border-strokedark w-24">GST %</th>
-                        <th className="p-2 border-r border-stroke dark:border-strokedark w-24">Tax Amt</th>
-                        <th className="p-2 border-r border-stroke dark:border-strokedark w-32">Net Ret. Amount</th>
-                        <th className="p-2">Line Status</th>
+                      <tr className="bg-gray-100 dark:bg-meta-4 text-center font-bold uppercase text-black dark:text-white border-b border-stroke">
+                        <th className="p-2 w-12">S#</th>
+                        <th className="p-2 text-left">Item Name Description</th>
+                        <th className="p-2 w-28 text-right pr-2">Retail Unit Price</th>
+                        <th className="p-2 w-20 text-center">Returned Qty</th>
+                        <th className="p-2 w-28 text-right pr-2">Taxable Base Amount</th>
+                        <th className="p-2 w-16 text-center">GST %</th>
+                        <th className="p-2 w-24 text-right pr-2">GST Amt</th>
+                        <th className="p-2 w-16 text-center">F.Tax %</th>
+                        <th className="p-2 w-24 text-right pr-2">F.Tax Amt</th>
+                        <th className="p-2 w-32 text-right pr-2 bg-red-50 dark:bg-meta-4/10">Net Return Total</th>
                       </tr>
                     </thead>
-                    <FieldArray name="items">
-                      {() => (
-                        <tbody className="bg-white dark:bg-boxdark">
-                          {values.items.length === 0 ? (
-                            <tr>
-                              <td colSpan={10} className="p-4 text-gray-400 italic text-xs font-semibold bg-white dark:bg-boxdark">No Product Loaded</td>
-                            </tr>
-                          ) : (
-                            values.items.map((item: any, index: number) => {
-                              const rQty = Number(item.returnedQty) || 0;
-                              const soldQty = Number(item.qty) || 0;
-                              const rp = Number(item.rp) || 0;
-                              const mrp = Number(item.mrp) || 0;
-                              const gstRate = Number(item.gstRate) || 0;
-                              const fTaxPer = Number(item.fTaxPer) || 0;
-                              const isThirdSchedule = values.scenarioType === "Sale of 3rd Schedule Goods";
-                              const basePrice = isThirdSchedule ? mrp : rp;
+                    <tbody>
+                      {values.items.map((item: any, index: number) => {
+                        const rp = Number(item.rp) || 0;
+                        const qty = Number(item.qty) || 0;
+                        const gstRate = Number(item.gstRate || item.gst_rate || 18);
+                        const fTaxPer = Number(item.fTaxPer || item.f_tax_per || 0);
 
-                              const baseAmount = basePrice * rQty;
-                              const gstAmount = (baseAmount / 100) * gstRate;
-                              const fTaxAmount = (baseAmount / 100) * fTaxPer;
-                              const netRowAmount = baseAmount + gstAmount + fTaxAmount;
-                              return (
-                                <tr key={index} className="border-b border-stroke dark:border-strokedark text-black dark:text-white">
-                                  <td className="p-2 border-r border-stroke dark:border-strokedark font-medium bg-gray-50 dark:bg-meta-4/10">{index + 1}</td>
-                                  <td className="p-2 border-r border-stroke dark:border-strokedark font-semibold text-left px-4">{item.itemName || 'No Product Loaded'}</td>
-                                  <td className="p-2 border-r border-stroke dark:border-strokedark text-gray-500 dark:text-gray-400">{rp.toFixed(2)}</td>
-                                  <td className="p-2 border-r border-stroke dark:border-strokedark text-gray-500 dark:text-gray-400">{mrp.toFixed(2)}</td>
-                                  <td className="p-2 border-r border-stroke dark:border-strokedark font-medium text-gray-600 dark:text-gray-400">{soldQty}</td>
-                                  <td className="p-1 border-r border-stroke dark:border-strokedark bg-blue-50/20">
-                                    <input type="number" name={`items.${index}.returnedQty`} onKeyDown={blockInvalidChar} onChange={(e) => { const val = Number(e.target.value); if (val > soldQty) { toast.error(`Cannot return more than originally sold (${soldQty})`); setFieldValue(`items.${index}.returnedQty`, soldQty); } else { handleChange(e); } }} value={item.returnedQty} className="w-20 p-1 border border-primary rounded text-center font-bold bg-transparent text-primary outline-none" disabled={isInvoiceUnpaid} />
-                                  </td>
-                                  <td className="p-2 border-r border-stroke dark:border-strokedark text-gray-500 dark:text-gray-400">{gstRate}%</td>
-                                  <td className="p-2 border-r border-stroke dark:border-strokedark font-medium text-gray-500 dark:text-gray-400">{gstAmount.toFixed(2)}</td>
-                                  <td className="p-2 border-r border-stroke dark:border-strokedark font-bold">{netRowAmount.toFixed(2)}</td>
-                                  <td className="p-2 text-gray-400 dark:text-gray-500 italic text-xs">Reverting Stock</td>
-                                </tr>
-                              );
-                            })
-                          )}
-                        </tbody>
-                      )}
-                    </FieldArray>
+                        const grossBaseAmount = rp * qty;
+                        const calculatedGstAmount = (grossBaseAmount / 100) * gstRate;
+                        const calculatedFurtherTaxAmount = (grossBaseAmount / 100) * fTaxPer;
+                        const taxInclusiveLineTotal = grossBaseAmount + calculatedGstAmount + calculatedFurtherTaxAmount;
+
+                        return (
+                          <tr key={index} className="text-center bg-white dark:bg-boxdark border-b border-stroke text-black dark:text-white font-mono font-semibold">
+                            <td className="p-2 font-semibold font-sans">{index + 1}</td>
+                            <td className="p-2 text-left font-bold font-sans text-xs">{item.itemName || 'Product Description'}</td>
+                            <td className="p-2 text-right pr-2">{rp.toFixed(2)}</td>
+                            <td className="p-2 font-black text-center text-xs text-primary">{qty}</td>
+                            <td className="p-2 text-right pr-2 text-gray-500">{grossBaseAmount.toFixed(2)}</td>
+                            <td className="p-2 text-center text-xs text-gray-400 font-sans">{gstRate}%</td>
+                            <td className="p-2 text-right pr-2 text-gray-400">{calculatedGstAmount.toFixed(2)}</td>
+                            <td className="p-2 text-center text-xs text-gray-400 font-sans">{fTaxPer}%</td>
+                            <td className="p-2 text-right pr-2 text-gray-400">{calculatedFurtherTaxAmount.toFixed(2)}</td>
+                            <td className="p-2 text-right text-danger font-black pr-2 bg-red-50/30 dark:bg-meta-4/5 text-sm">Rs. {taxInclusiveLineTotal.toFixed(2)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
                   </table>
                 </div>
 
-                <div className="flex flex-col md:flex-row justify-between items-start gap-6 mt-6 border-t border-stroke dark:border-strokedark pt-6">
-                  <div className="w-full md:w-1/2">
-                    <label className="block text-xs font-semibold uppercase text-gray-500 mb-1">Return Reason / Internal Notes:</label>
-                    <textarea name="remarks" rows={3} onChange={handleChange} value={values.remarks} className="w-full rounded border border-stroke p-3 text-xs outline-none focus:border-primary bg-transparent dark:border-strokedark text-black dark:text-white" placeholder="Enter return conditions details..."></textarea>
+                <div className="flex flex-col md:flex-row justify-between gap-10 mt-6 px-4 pb-4">
+                  <div className="flex flex-col gap-4 w-full md:w-1/2 border border-stroke p-4 rounded dark:border-strokedark bg-slate-50/10 space-y-1">
+                    <div>
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-primary dark:text-white mb-2">1. Refund Settlement Mode Select: *</h4>
+                      <select
+                        name="settlementMode"
+                        value={values.settlementMode}
+                        onChange={(e) => {
+                          handleChange(e);
+                          if (e.target.value === 'Cash') setFieldValue('selectedBankAccountId', '');
+                        }}
+                        className="w-full border border-stroke dark:border-strokedark rounded p-2 bg-white dark:bg-boxdark outline-none font-black text-xs text-black dark:text-white focus:border-primary"
+                      >
+                        <option value="Cash">Cash Ledger Account</option>
+                        <option value="Bank">Bank Account Wire Transfer</option>
+                      </select>
+                    </div>
+
+                    {values.settlementMode === 'Bank' && (
+                      <div className="transition-all duration-200">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-primary dark:text-white mb-2">Select Target Settlement Corporate Bank Profile: *</h4>
+                        <select
+                          name="selectedBankAccountId"
+                          value={values.selectedBankAccountId}
+                          onChange={handleChange}
+                          className={`w-full border rounded p-2 bg-white dark:bg-boxdark outline-none font-bold text-xs text-black dark:text-white focus:border-primary ${hasAttempted && errors.selectedBankAccountId ? 'border-red-500' : 'border-stroke dark:border-strokedark'}`}
+                        >
+                          <option value="">-- Choose Account Wire Registry --</option>
+                          {banksList.map(b => (
+                            <option key={b.id} value={b.accountTitle}>{b.bankName} - {b.accountTitle}</option>
+                          ))}
+                        </select>
+                        {hasAttempted && errors.selectedBankAccountId && <p className="text-red-500 text-[10px] font-bold mt-1">⚠️ Required field</p>}
+                      </div>
+                    )}
+
+                    <div className="border-t border-stroke dark:border-strokedark my-2"></div>
+                    <div>
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-danger mb-2">2. Cash Payout Remitted Amount Paid (PKR): *</h4>
+                      <input
+                        type="number"
+                        name="payoutAmountPaid"
+                        onKeyDown={blockInvalidChar}
+                        onChange={handleChange}
+                        value={values.payoutAmountPaid}
+                        placeholder="Enter paid back amount..."
+                        className="w-full rounded border border-stroke p-2 bg-transparent text-right font-black text-danger text-sm focus:border-primary outline-none text-black dark:text-white"
+                      />
+                    </div>
                   </div>
-                  <div className="w-full md:w-1/3 space-y-2 text-xs border border-stroke dark:border-strokedark rounded-sm p-4 bg-gray-50/50 dark:bg-meta-4/10 text-black dark:text-white">
-                    <div className="flex justify-between border-b pb-1.5 dark:border-strokedark">
-                      <span className="text-gray-600 dark:text-gray-400">Total Returned Items:</span>
-                      <b className="text-danger text-sm font-bold">{values.items.reduce((sum: number, i: any) => sum + (Number(i.returnedQty) || 0), 0)}</b>
-                    </div>
-                    <div className="flex justify-between border-b pb-1.5 dark:border-strokedark">
-                      <span className="text-gray-600 dark:text-gray-400">Taxable Value Reverted:</span>
-                      <b className="font-bold text-sm">
-                        {values.items.reduce((sum: number, i: any) => sum + ((values.scenarioType === "Sale of 3rd Schedule Goods" ? Number(i.mrp) : Number(i.rp)) * (Number(i.returnedQty) || 0)), 0).toFixed(2)}
+                  <div className="w-full md:w-1/3 space-y-3 text-xs text-black dark:text-white font-semibold">
+                    {/* --- ✅ LIVE AUDIT MONITOR BAR: SHOWS THE ORIGINAL DOWN PAYMENT CASH CLEARLY --- */}
+                    {values.invoiceIdRef && (
+                      <div className="bg-blue-50/50 dark:bg-meta-4/20 border border-blue-200 rounded p-3 space-y-1.5 font-mono text-[11px] text-gray-500 dark:text-gray-300">
+                        <h5 className="font-bold text-primary dark:text-white text-[10px] uppercase tracking-wide">📄 Source Invoice Audit Profile</h5>
+                        <div className="flex justify-between"><span>Orig Grand Total:</span><b className="text-black dark:text-white">Rs. {origInvoiceCashMetrics.grandTotal.toLocaleString()}</b></div>
+                        <div className="flex justify-between border-t pt-1 border-blue-100 dark:border-strokedark"><span>Counter Cash Paid:</span><b className="text-success font-black text-xs">Rs. {origInvoiceCashMetrics.cashReceivedBox.toLocaleString()}</b></div>
+                      </div>
+                    )}
+
+                    <div className="flex justify-between border-b pb-1 dark:border-strokedark pt-1">
+                      <span>Net Return Items Value:</span>
+                      <b className="text-danger text-sm">
+                        Rs. {values.items.reduce((acc: number, i: any) => {
+                          const itemQty = Number(i.qty) || 0;
+                          const itemRp = Number(i.rp) || 0;
+                          const itemGst = Number(i.gstRate || i.gst_rate || 18);
+                          const itemFTax = Number(i.fTaxPer || i.f_tax_per || 0);
+                          const base = itemRp * itemQty;
+                          return acc + (base + (base / 100 * itemGst) + (base / 100 * itemFTax));
+                        }, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </b>
                     </div>
-                    <div className="flex justify-between border-b pb-1.5 dark:border-strokedark">
-                      <span className="text-gray-600 dark:text-gray-400">Sales Tax Reverted:</span>
-                      <b className="font-bold text-sm">
-                        {values.items.reduce((sum: number, i: any) => sum + (((values.scenarioType === "Sale of 3rd Schedule Goods" ? Number(i.mrp) : Number(i.rp)) * (Number(i.returnedQty) || 0) / 100) * (Number(i.gstRate) || 0)), 0).toFixed(2)}
+
+                    <div className="flex justify-between pt-1 font-mono text-[10px] text-gray-400">
+                      <span>Calculated Return Strategy:</span>
+                      <b className="uppercase underline text-black dark:text-white">
+                        {Number(values.payoutAmountPaid) >= values.items.reduce((acc: number, i: any) => {
+                          const itemQty = Number(i.qty) || 0;
+                          const itemRp = Number(i.rp) || 0;
+                          const itemGst = Number(i.gstRate || i.gst_rate || 18);
+                          const itemFTax = Number(i.fTaxPer || i.f_tax_per || 0);
+                          const base = itemRp * itemQty;
+                          return acc + (base + (base / 100 * itemGst) + (base / 100 * itemFTax));
+                        }, 0) ? 'Paid Return Note' : 'Linked On Credit'}
                       </b>
-                    </div>
-                    <div className="flex justify-between pt-1 text-danger font-extrabold text-base uppercase tracking-tight">
-                      <span>Total Balance Adjusted:</span>
-                      <span>
-                        {values.items.reduce((sum: number, i: any) => { const base = values.scenarioType === "Sale of 3rd Schedule Goods" ? Number(i.mrp) : Number(i.rp); const amt = base * (Number(i.returnedQty) || 0); return sum + (amt + ((amt / 100) * (Number(i.gstRate) || 0)) + ((amt / 100) * (Number(i.fTaxPer) || 0))); }, 0).toFixed(2)}
-                      </span>
                     </div>
                   </div>
                 </div>
 
-                <div className="pt-4 mt-4 border-t border-stroke dark:border-strokedark flex justify-end gap-3">
-                  <button type="button" onClick={() => navigate('/Sales-Return/Debit-Notes/List')} className="bg-danger text-white py-2 px-8 rounded font-medium hover:bg-opacity-90 transition shadow-sm cursor-pointer" >
-                    Cancel
-                  </button>
-                  <button type="submit" disabled={loading || values.items.length === 0 || isInvoiceUnpaid} className={`rounded ${isEditMode ? "bg-success" : "bg-primary"} py-2.5 px-10 font-medium text-white hover:bg-opacity-90 transition disabled:opacity-40 text-sm shadow-xs cursor-pointer font-semibold`}  >
-                    {loading ? <Spinner /> : isEditMode ? 'Update Return' : 'Save Return Note'}
-                  </button>
+                <div className="pt-4 mt-4 border-t border-stroke dark:border-strokedark flex flex-col md:flex-row justify-between items-center bg-gray-50 dark:bg-meta-4/5 p-4 rounded-sm gap-4">
+                  <div>
+                    {isInvoiceAlreadyReturned && !isEditMode && (
+                      <p className="text-red-500 font-black text-xs tracking-wide bg-red-50 border border-red-200 py-1.5 px-4 rounded shadow-xs animate-pulse">
+                        ⚠️ This Invoice is Already Returned
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex gap-4">
+                    <button type="button" onClick={() => navigate('/Sales-Return/Debit-Notes/List')} className="rounded border border-stroke dark:border-strokedark py-2 px-8 font-semibold text-sm text-black dark:text-white hover:bg-gray-100 transition cursor-pointer">Cancel</button>
+                    <button
+                      type="submit"
+                      disabled={loading || (isInvoiceAlreadyReturned && !isEditMode)}
+                      className={`py-2 px-10 rounded font-black text-sm transition shadow-sm font-bold text-white
+                        ${(isInvoiceAlreadyReturned && !isEditMode)
+                          ? 'bg-gray-400 opacity-40 cursor-not-allowed'
+                          : 'bg-success hover:bg-opacity-90 cursor-pointer'
+                        }`}
+                    >
+                      {loading ? <Spinner /> : (isEditMode ? 'Modify Entry' : 'Save Record')}
+                    </button>
+                  </div>
                 </div>
               </Form>
             );

@@ -7,7 +7,7 @@ import Spinner from '../../../ui/Spinner';
 const SalesReport = () => {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
-    const [reportType, setReportType] = useState<'sale' | 'return' | 'invoice' | 'quotation'>('sale');
+    const [reportType, setReportType] = useState<'sale' | 'return' | 'invoice'>('sale');
 
     const [customers, setCustomers] = useState<any[]>([]);
     const [salesmen, setSalesmen] = useState<any[]>([]);
@@ -18,15 +18,17 @@ const SalesReport = () => {
     const [products, setProducts] = useState<any[]>([]);
     const [locations, setLocations] = useState<any[]>([]);
     const [availableInvoices, setAvailableInvoices] = useState<any[]>([]);
+    const [searchQuery, setSearchQuery] = useState('');
 
     const [criteria, setCriteria] = useState({
         customer: 'All', salesman: 'All', transport: 'All', category: 'All',
         uom: 'All', brand: 'All', product: 'All', location: 'All',
-        saleType: 'All', saleMethod: 'All', invoiceNo: 'All', quotationNo: '',
+        saleType: 'All', saleMethod: 'All', invoiceNo: 'All',
         withLedgerSummary: false,
         dateFrom: new Date().toISOString().split('T')[0],
         dateTo: new Date().toISOString().split('T')[0]
     });
+
     useEffect(() => {
         const fetchCriteriaLookups = async () => {
             try {
@@ -38,7 +40,7 @@ const SalesReport = () => {
                 const { data: brnd } = await supabase.from('inventory_brands').select('id, name');
                 const { data: prod } = await supabase.from('products').select('id, product_name');
                 const { data: loc } = await supabase.from('inventory_locations').select('id, name');
-                const { data: invData } = await supabase.from('sales_invoices').select('id, total_amount').order('id', { ascending: false });
+                const { data: invData } = await supabase.from('sales_invoices').select('id, total_amount, customer_name').order('id', { ascending: false });
 
                 const { data: uomData } = await supabase
                     .from('inventory_uom')
@@ -70,23 +72,42 @@ const SalesReport = () => {
         fetchCriteriaLookups();
     }, []);
 
+    useEffect(() => {
+        const closeDropdownOverlay = (e: MouseEvent) => {
+            const target = e.target as HTMLElement;
+            if (!target.closest('.searchable-report-dropdown-container')) {
+                document.getElementById('report-search-dropdown-list')?.classList.add('hidden');
+            }
+        };
+        window.addEventListener('click', closeDropdownOverlay);
+        return () => window.removeEventListener('click', closeDropdownOverlay);
+    }, []);
+
     const handleInputChange = (field: string, value: any) => {
         setCriteria(prev => ({ ...prev, [field]: value }));
     };
 
+    const getFilteredInvoices = () => {
+        const term = searchQuery.trim().toLowerCase();
+        if (!term) return availableInvoices;
+        return availableInvoices.filter(i =>
+            String(i.id).includes(term) ||
+            String(i.customer_name || '').toLowerCase().includes(term)
+        );
+    };
+
     if (loading) return <div className="flex h-48 items-center justify-center"><Spinner /></div>;
     return (
-        <div className="mx-auto max-w-7xl flex flex-col gap-6 text-black dark:text-bodydark text-xs">
+        <div className="mx-auto max-w-7xl flex flex-col gap-6 text-black dark:text-bodydark text-xs antialiased font-sans relative">
             <div>
                 <h2 className="text-xl font-bold text-black dark:text-white">Commercial Sales Auditing Center</h2>
                 <p className="text-xs text-gray-400">Isolate parameters and compile corporate distribution ledger records</p>
             </div>
 
-            <div className="flex border-b border-stroke dark:border-strokedark gap-2">
-                <button type="button" onClick={() => setReportType('sale')} className={`py-2.5 px-6 font-bold uppercase transition tracking-wide text-xs border-b-2 ${reportType === 'sale' ? 'border-primary text-primary font-black' : 'border-transparent text-gray-400 hover:text-black cursor-pointer'}`}>Sale Report</button>
-                <button type="button" onClick={() => setReportType('return')} className={`py-2.5 px-6 font-bold uppercase transition tracking-wide text-xs border-b-2 ${reportType === 'return' ? 'border-primary text-primary font-black' : 'border-transparent text-gray-400 hover:text-black cursor-pointer'}`}>Sale Return Report</button>
-                <button type="button" onClick={() => setReportType('invoice')} className={`py-2.5 px-6 font-bold uppercase transition tracking-wide text-xs border-b-2 ${reportType === 'invoice' ? 'border-primary text-primary font-black' : 'border-transparent text-gray-400 hover:text-black cursor-pointer'}`}>Sale Invoice Report</button>
-                <button type="button" onClick={() => setReportType('quotation')} className={`py-2.5 px-6 font-bold uppercase transition tracking-wide text-xs border-b-2 ${reportType === 'quotation' ? 'border-primary text-primary font-black' : 'border-transparent text-gray-400 hover:text-black cursor-pointer'}`}>Quotation Report</button>
+            <div className="flex border-b border-stroke dark:border-strokedark gap-2 bg-white dark:bg-boxdark font-black tracking-wider text-[11px] uppercase text-gray-500">
+                <button type="button" onClick={() => { setReportType('sale'); handleInputChange('invoiceNo', 'All'); setSearchQuery(''); }} className={`py-2.5 px-6 font-bold uppercase transition tracking-wide text-xs border-b-2 cursor-pointer ${reportType === 'sale' ? 'border-primary text-primary font-black' : 'border-transparent text-gray-400 hover:text-black cursor-pointer'}`}>Sale Report</button>
+                <button type="button" onClick={() => { setReportType('return'); handleInputChange('invoiceNo', 'All'); setSearchQuery(''); }} className={`py-2.5 px-6 font-bold uppercase transition tracking-wide text-xs border-b-2 cursor-pointer ${reportType === 'return' ? 'border-primary text-primary font-black' : 'border-transparent text-gray-400 hover:text-black cursor-pointer'}`}>Sale Return Report</button>
+                <button type="button" onClick={() => { setReportType('invoice'); handleInputChange('invoiceNo', 'All'); setSearchQuery(''); }} className={`py-2.5 px-6 font-bold uppercase transition tracking-wide text-xs border-b-2 cursor-pointer ${reportType === 'invoice' ? 'border-primary text-primary font-black' : 'border-transparent text-gray-400 hover:text-black cursor-pointer'}`}>Sale Invoice Report</button>
             </div>
 
             <div className="rounded-sm border border-stroke bg-white shadow-default dark:border-strokedark dark:bg-boxdark p-6">
@@ -106,7 +127,6 @@ const SalesReport = () => {
                             <div><label className="block text-gray-500 mb-1 font-bold">Sale Method Mode:</label><select value={criteria.saleMethod} onChange={(e) => handleInputChange('saleMethod', e.target.value)} className="w-full border rounded p-2 bg-transparent font-semibold text-xs text-black dark:text-white dark:bg-boxdark"><option value="All">All Sale Methods</option><option value="Direct">Direct Sale</option><option value="Challan">Via Challan Link</option></select></div>
                         </>
                     )}
-
                     {reportType === 'return' && (
                         <>
                             <div><label className="block font-bold text-gray-500 mb-1">Customer Group:</label><select value={criteria.customer} onChange={(e) => handleInputChange('customer', e.target.value)} className="w-full border rounded p-2 bg-transparent font-semibold text-xs text-black dark:text-white dark:bg-boxdark"><option value="All">All Customers</option>{customers.map(c => <option key={c.id} value={c.customerName}>{c.customerName}</option>)}</select></div>
@@ -117,22 +137,47 @@ const SalesReport = () => {
                             <div><label className="block font-bold text-gray-500 mb-1">Inventory Locations:</label><select value={criteria.location} onChange={(e) => handleInputChange('location', e.target.value)} className="w-full border rounded p-2 bg-transparent font-semibold text-xs text-black dark:text-white dark:bg-boxdark"><option value="All">All Locations</option>{locations.map(l => <option key={l.id} value={l.name}>{l.name}</option>)}</select></div>
                         </>
                     )}
+
                     {reportType === 'invoice' && (
                         <>
-                            <div className="md:col-span-2">
+                            <div className="md:col-span-2 searchable-report-dropdown-container relative">
                                 <label className="block font-bold text-gray-500 mb-1">Select Target Bill Invoice Profile: *</label>
-                                <select
-                                    value={criteria.invoiceNo}
-                                    onChange={(e) => handleInputChange('invoiceNo', e.target.value)}
-                                    className="w-full border border-stroke dark:border-strokedark rounded p-2 bg-transparent font-bold text-black dark:text-white outline-none text-xs focus:border-primary dark:bg-boxdark"
+
+                                <div
+                                    onClick={() => document.getElementById('report-search-dropdown-list')?.classList.toggle('hidden')}
+                                    className="w-full rounded border border-stroke dark:border-strokedark p-2 text-xs bg-white dark:bg-boxdark font-bold text-black dark:text-white cursor-pointer flex justify-between items-center h-[34px]"
                                 >
-                                    <option value="All">-- All Invoice Ledgers --</option>
-                                    {availableInvoices.map((inv) => (
-                                        <option key={inv.id} value={inv.id}>
-                                            INV-{String(inv.id).padStart(4, '0')} (Rs. {Number(inv.total_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })})
-                                        </option>
-                                    ))}
-                                </select>
+                                    <span>
+                                        {criteria.invoiceNo !== 'All' ? (() => {
+                                            const matched = availableInvoices.find(i => String(i.id) === String(criteria.invoiceNo));
+                                            return matched ? `INV-${String(matched.id).padStart(4, '0')} (Rs. {Number(matched.total_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })})` : `INV-${criteria.invoiceNo}`;
+                                        })() : `-- All Invoice Ledgers (${getFilteredInvoices().length} Found) --`}
+                                    </span>
+                                    <span className="text-gray-400 text-[9px]">▼</span>
+                                </div>
+
+                                <div id="report-search-dropdown-list" className="hidden absolute top-full left-0 w-full bg-white dark:bg-boxdark border border-stroke dark:border-strokedark shadow-xl rounded-sm mt-1 z-99999 p-2 space-y-2">
+                                    <input
+                                        type="text"
+                                        placeholder="Type keywords to filter options list..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="w-full rounded border border-stroke p-1.5 text-xs bg-transparent text-black dark:text-white outline-none focus:border-primary font-bold"
+                                    />
+                                    <div className="max-h-40 overflow-y-auto space-y-1 font-bold text-xs text-black dark:text-white">
+                                        <div onClick={() => { handleInputChange('invoiceNo', 'All'); document.getElementById('report-search-dropdown-list')?.classList.add('hidden'); }} className="p-2 hover:bg-primary hover:text-white cursor-pointer rounded-sm text-gray-400 italic">-- All Invoice Ledgers --</div>
+                                        {getFilteredInvoices().map(inv => (
+                                            <div
+                                                key={inv.id}
+                                                onClick={() => { handleInputChange('invoiceNo', String(inv.id)); document.getElementById('report-search-dropdown-list')?.classList.add('hidden'); }}
+                                                className="p-2 hover:bg-primary hover:text-white cursor-pointer rounded-sm transition-colors"
+                                            >
+                                                INV-{String(inv.id).padStart(4, '0')} (Rs. {Number(inv.total_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })})
+                                            </div>
+                                        ))}
+                                        {getFilteredInvoices().length === 0 && <div className="p-2 text-center text-gray-400 italic">No matching records.</div>}
+                                    </div>
+                                </div>
                             </div>
                             <div className="flex items-center gap-2 pt-5 md:col-span-2">
                                 <input type="checkbox" id="withLedgerSummary" checked={criteria.withLedgerSummary} onChange={(e) => handleInputChange('withLedgerSummary', e.target.checked)} className="h-4 w-4 rounded text-primary focus:ring-primary border-stroke cursor-pointer" />
@@ -141,11 +186,7 @@ const SalesReport = () => {
                         </>
                     )}
 
-                    {reportType === 'quotation' && (
-                        <div><label className="block font-bold text-gray-500 mb-1">Quotation Document Reference #:</label><input type="text" value={criteria.quotationNo} onChange={(e) => handleInputChange('quotationNo', e.target.value)} placeholder="Enter quotation reference code..." className="w-full border border-stroke rounded p-2 bg-transparent font-semibold outline-none focus:border-primary text-xs text-black dark:text-white dark:bg-boxdark" /></div>
-                    )}
-
-                    {reportType !== 'invoice' && reportType !== 'quotation' && (
+                    {reportType !== 'invoice' && (
                         <>
                             <div><label className="block font-bold text-gray-500 mb-1">Date From (Start):</label><input type="date" value={criteria.dateFrom} onChange={(e) => handleInputChange('dateFrom', e.target.value)} className="w-full border border-stroke rounded p-2 bg-transparent font-semibold text-black dark:text-white text-xs outline-none dark:bg-boxdark" /></div>
                             <div><label className="block font-bold text-gray-500 mb-1">Date To (End Date):</label><input type="date" value={criteria.dateTo} onChange={(e) => handleInputChange('dateTo', e.target.value)} className="w-full border border-stroke rounded p-2 bg-transparent font-semibold text-black dark:text-white text-xs outline-none dark:bg-boxdark" /></div>

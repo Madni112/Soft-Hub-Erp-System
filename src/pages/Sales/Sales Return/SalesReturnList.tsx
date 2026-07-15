@@ -33,6 +33,7 @@ const SalesReturnList = () => {
       setLoading(false);
     }
   };
+
   const handleDeleteReturn = async (id: string | number) => {
     if (!window.confirm('Are you completely certain you want to delete this sales return debit note record?')) return;
 
@@ -54,7 +55,7 @@ const SalesReturnList = () => {
             .single();
 
           if (currentProduct) {
-            const reducedStockCount = (Number(currentProduct.current_stock) || 0) - Number(item.returnedQty || 0);
+            const reducedStockCount = (Number(currentProduct.current_stock) || 0) - Number(item.qty || item.returnedQty || 0);
             await supabase
               .from('products')
               .update({ current_stock: reducedStockCount })
@@ -65,8 +66,7 @@ const SalesReturnList = () => {
 
       const { error: deleteError } = await supabase
         .from('sales_returns')
-        .delete()
-        .eq('id', id);
+        .delete().eq('id', id);
 
       if (deleteError) throw deleteError;
       toast.success('Sales return entry removed successfully.');
@@ -78,7 +78,7 @@ const SalesReturnList = () => {
 
   const filteredReturns = returns.filter(ret =>
     ret.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    ret.original_invoice_no?.toString().includes(searchTerm) ||
+    ret.original_invoice_no?.toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
     ret.id.toString().includes(searchTerm)
   );
 
@@ -93,7 +93,7 @@ const SalesReturnList = () => {
   }, [searchTerm, pageSize]);
 
   return (
-    <div className="mx-auto max-w-7xl flex flex-col gap-6 relative">
+    <div className="mx-auto max-w-7xl flex flex-col gap-6 relative text-black dark:text-bodydark text-xs">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-black dark:text-white flex items-center gap-2">
           Sales Return / Debit Notes
@@ -104,7 +104,6 @@ const SalesReturnList = () => {
           </button>
         </div>
       </div>
-
       <div className="rounded-sm border border-stroke bg-white shadow-default dark:border-strokedark dark:bg-boxdark p-6">
         <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-4">
           <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
@@ -122,6 +121,7 @@ const SalesReturnList = () => {
             <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search by customer or invoice..." className="w-full sm:w-64 rounded border border-stroke py-1.5 px-3 bg-transparent dark:border-strokedark outline-none focus:border-primary text-sm text-black dark:text-white" />
           </div>
         </div>
+
         <div className="max-w-full overflow-x-auto">
           <table className="w-full table-auto border-collapse">
             <thead>
@@ -131,47 +131,81 @@ const SalesReturnList = () => {
                 <th className="py-4 px-4 font-semibold text-sm w-32">Orig. Inv No</th>
                 <th className="py-4 px-4 font-semibold text-sm">Sale Return Date</th>
                 <th className="py-4 px-4 font-semibold text-sm">Customer</th>
-                <th className="py-4 px-4 font-semibold text-sm w-36">Sale Return Type</th>
+                <th className="py-4 px-4 font-semibold text-sm w-36">Return Status</th>
                 <th className="py-4 px-4 font-semibold text-sm text-right">Total Amount</th>
                 <th className="py-4 px-4 font-semibold text-sm w-36 text-center">Action</th>
               </tr>
             </thead>
             <tbody>
-              {returns.length === 0 && !loading ? (
-                <tr>
-                  <td colSpan={8} className="text-center py-10 text-sm text-gray-500 dark:text-gray-400">No records located.</td>
-                </tr>
-              ) : paginatedReturns.map((ret, idx) => {
-                const serialNumber = startIndex + idx + 1;
-                return (
-                  <tr key={ret.id} className="border-b border-stroke dark:border-strokedark hover:bg-slate-50 dark:hover:bg-meta-4/10 duration-150 text-sm">
-                    <td className="py-3.5 px-4 text-black dark:text-white font-medium">{serialNumber}</td>
-                    <td className="py-3.5 px-4 font-bold text-primary dark:text-white">{`RTN-${String(ret.id).padStart(4, '0')}`}</td>
-                    <td className="py-3.5 px-4 font-medium text-gray-600 dark:text-gray-400">{ret.original_invoice_no ? `INV-${String(ret.original_invoice_no).padStart(4, '0')}` : '-'}</td>
-                    <td className="py-3.5 px-4 text-gray-500 whitespace-nowrap">{ret.return_date ? ret.return_date : new Date(ret.created_at).toLocaleDateString()}</td>
-                    <td className="py-3.5 px-4 font-medium text-black dark:text-white">{ret.customer_name}</td>
-                    <td className="py-3.5 px-4">
-                      <span className={`inline-flex rounded-sm py-0.5 px-2 text-xs font-bold text-white uppercase tracking-wide ${ret.return_type === 'Cash' ? 'bg-success' : 'bg-danger'}`}>
-                        {ret.return_type || 'On Credit'}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-right font-bold text-black dark:text-white">{Number(ret.total_net_amount || ret.total_amount || 0).toFixed(2)}</td>
-                    <td className="py-3.5 px-4 text-sm">
-                      <div className="flex items-center justify-center space-x-3">
-                        <button type="button" onClick={() => navigate(`/Sales-Return/Debit-Notes/Print/${ret.id}`)} className="text-gray-500 hover:text-secondary transition p-0.5 cursor-pointer" title="Print Note" >
-                          <MdPrint size={14} />
-                        </button>
-                        <button type="button" onClick={() => navigate('/Sales-Return/Debit-Notes/Add', { state: { returnRecord: ret } })} className="text-gray-500 hover:text-primary transition p-0.5 cursor-pointer" title="Edit Record" >
-                          <MdEdit size={14} />
-                        </button>
-                        <button type="button" onClick={() => handleDeleteReturn(ret.id)} className="text-gray-500 hover:text-danger transition p-0.5 cursor-pointer" title="Delete Record" >
-                          <MdDelete size={18} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+              {loading ? (
+                <tr><td colSpan={8} className="text-center py-12"><Spinner /></td></tr>
+              ) : filteredReturns.length === 0 ? (
+                <tr><td colSpan={8} className="text-center py-10 text-xs text-gray-500 dark:text-gray-400">No records located.</td></tr>
+              ) : (
+                paginatedReturns.map((ret, idx) => {
+                  const serialNumber = startIndex + idx + 1;
+                  const rawInvoiceStr = String(ret.original_invoice_no || '').trim();
+                  const displayInvoiceNo = rawInvoiceStr.toUpperCase().startsWith('INV-') ? rawInvoiceStr : `INV-${rawInvoiceStr}`;
+
+                  return (
+                    <tr key={ret.id} className="border-b border-stroke dark:border-strokedark hover:bg-slate-50 dark:hover:bg-meta-4/10 duration-150 text-sm">
+                      <td className="py-3.5 px-4 text-black dark:text-white font-medium">{serialNumber}</td>
+                      <td className="py-3.5 px-4 font-bold text-primary dark:text-white">{`RTN-${String(ret.id).padStart(4, '0')}`}</td>
+                      <td className="py-3.5 px-4 font-mono font-bold text-gray-600 dark:text-gray-400">{displayInvoiceNo}</td>
+                      <td className="py-3.5 px-4 text-gray-500 whitespace-nowrap">{ret.return_date ? ret.return_date : new Date(ret.created_at).toLocaleDateString()}</td>
+                      <td className="py-3.5 px-4 font-medium text-black dark:text-white">{ret.customer_name}</td>
+                      <td className="py-3.5 px-4">
+                        <span className={`inline-flex rounded-sm py-0.5 px-2 text-xs font-bold text-white uppercase tracking-wide ${ret.return_status === 'Paid' ? 'bg-success' : 'bg-amber-500'}`}>
+                          {ret.return_status || 'On Credit'}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-right font-black text-danger font-mono">
+                        Rs. {(() => {
+                          if (ret.items && Array.isArray(ret.items)) {
+                            const netTaxInclusiveReturnTotal = ret.items.reduce((totalAccumulator: number, currentItem: any) => {
+                              const itemQuantity = Number(currentItem.qty || currentItem.returnedQty || 0);
+                              const itemUnitPrice = Number(currentItem.rp || currentItem.retail_price || 0);
+                              const itemGstRate = Number(currentItem.gstRate || currentItem.gst_rate || 18);
+                              const itemFurtherTaxRate = Number(currentItem.fTaxPer || currentItem.f_tax_per || 0);
+
+                              const baseTaxableAmount = itemUnitPrice * itemQuantity;
+                              const lineGstComponent = (baseTaxableAmount / 100) * itemGstRate;
+                              const lineFurtherTaxComponent = (baseTaxableAmount / 100) * itemFurtherTaxRate;
+
+                              return totalAccumulator + (baseTaxableAmount + lineGstComponent + lineFurtherTaxComponent);
+                            }, 0);
+
+                            return netTaxInclusiveReturnTotal.toLocaleString(undefined, { minimumFractionDigits: 2 });
+                          }
+
+                          // Direct raw column database value fallback if no structured array is loaded
+                          return Number(ret.total_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 });
+                        })()}
+                      </td>
+
+                      <td className="py-3.5 px-4 text-sm">
+                        <div className="flex items-center justify-center space-x-3">
+                          <button type="button" onClick={() => navigate(`/Sales-Return/Debit-Notes/Print/${ret.id}`)} className="text-gray-500 hover:text-secondary transition p-0.5 cursor-pointer" title="Print Note" >
+                            <MdPrint size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            // --- ✅ UNIFIED STATE ROUTING TARGET KEY: invoice MATCHES PRECISELY WITH YOUR RE-ENGINEERED FORM CONFIGURATION ---
+                            onClick={() => navigate('/Sales-Return/Debit-Notes/Add', { state: { invoice: ret } })}
+                            className="text-gray-500 hover:text-primary transition p-0.5 cursor-pointer"
+                            title="Edit Record"
+                          >
+                            <MdEdit size={14} />
+                          </button>
+                          <button type="button" onClick={() => handleDeleteReturn(ret.id)} className="text-gray-500 hover:text-danger transition p-0.5 cursor-pointer" title="Delete Record" >
+                            <MdDelete size={18} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>

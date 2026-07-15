@@ -55,6 +55,8 @@ import PurchaseReport from '../pages/Reports/Purchase Report/PurchaseReports';
 import StockReport from '../pages/Reports/Stock Report/StockReport';
 import AccountReport from '../pages/Reports/Account Report/AccountReport';
 import SaleReportPrint from '../pages/Reports/Sales Report/SaleReportPrint';
+import SaleReturnReceiptAdd from '../pages/Sales/sales Return Receipt/SalesReturnReceiptAdd';
+import SaleReturnReceiptList from '../pages/Sales/sales Return Receipt/SaleReturnReceiptList';
 
 export const adminRoutes = [
   {
@@ -176,10 +178,16 @@ export const adminRoutes = [
         component: <SalesHistory />
       },
       {
-        label: 'Sales Return / Debit Notes',
+        label: 'Sales Return',
         icon: MdEdit,
         path: '/Sales-Return/Debit-Notes/List',
         component: <SalesReturnList />,
+      },
+      {
+        label: 'Sales Return Receipt',
+        icon: MdReceipt,
+        path: '/sales/sales-return-receipt/list',
+        component: <SaleReturnReceiptList/>
       },
       {
         label: 'Customers',
@@ -402,6 +410,11 @@ export const adminRoutes = [
   {
     path: '/Reports/Sales-Report/Print',
     component: <SaleReportPrint/>,
+    hideFromSidebar: true
+  },
+  {
+    path: '/sales/sales-return-receipt/add',
+    component: <SaleReturnReceiptAdd/>,
     hideFromSidebar: true
   }
 ];
