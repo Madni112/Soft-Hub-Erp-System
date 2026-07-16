@@ -52,10 +52,10 @@ const SaleReportPrint = () => {
           });
 
           if (filters.dateFrom && filters.dateTo) {
-            const startStr = String(filters.dateFrom).split('T');
-            const endStr = String(filters.dateTo).split('T');
+            const startStr = String(filters.dateFrom).split('T')[0];
+            const endStr = String(filters.dateTo).split('T')[0];
             pool = pool.filter(i => {
-              const targetDateStr = String(i.sale_date || i.created_at || '').split('T');
+              const targetDateStr = String(i.sale_date || i.created_at || '').split('T')[0];
               return targetDateStr >= startStr && targetDateStr <= endStr;
             });
           }
@@ -78,10 +78,10 @@ const SaleReportPrint = () => {
 
           let pool = data || [];
           if (filters.dateFrom && filters.dateTo) {
-            const startStr = String(filters.dateFrom).split('T');
-            const endStr = String(filters.dateTo).split('T');
+            const startStr = String(filters.dateFrom).split('T')[0];
+            const endStr = String(filters.dateTo).split('T')[0];
             pool = pool.filter(r => {
-              const targetDateStr = String(r.return_date || r.created_at || '').split('T');
+              const targetDateStr = String(r.return_date || r.created_at || '').split('T')[0];
               return targetDateStr >= startStr && targetDateStr <= endStr;
             });
           }
@@ -91,21 +91,6 @@ const SaleReportPrint = () => {
         else if (rType === 'invoice') {
           let query = supabase.from('sales_invoices').select('*');
           if (filters.invoiceNo && filters.invoiceNo !== 'All') query = query.eq('id', filters.invoiceNo);
-          const { data, error } = await query;
-          if (error) throw error;
-          setReportRows(data || []);
-        }
-
-        else if (rType === 'quotation') {
-          let query = supabase.from('quotations').select('*');
-
-          const targetRefCode = filters.invoiceNo || filters.quotationNo || config.invoiceNo || config.filters?.invoiceNo;
-
-          if (targetRefCode && targetRefCode !== 'All') {
-            const cleanNumericId = String(targetRefCode).replace(/\D/g, '');
-            if (cleanNumericId) query = query.eq('id', cleanNumericId);
-          }
-
           const { data, error } = await query;
           if (error) throw error;
           setReportRows(data || []);
@@ -146,6 +131,7 @@ const SaleReportPrint = () => {
             <span>Audit Duration Block Window: {filters.dateFrom || 'N/A'} up to {filters.dateTo || 'N/A'}</span>
           </div>
         </div>
+
         <div className="w-full overflow-x-auto">
           <table className="w-full table-auto border border-collapse border-black text-[11px] font-sans antialiased text-left print:w-full">
             <thead>
@@ -156,18 +142,22 @@ const SaleReportPrint = () => {
                 {rType === 'sale' && <th className="p-1.5 border border-black">Officer Link</th>}
                 {rType === 'sale' && <th className="p-1.5 border border-black">Carrier Fleet</th>}
                 <th className="p-1.5 border border-black text-center">Processing Date</th>
-                <th className="p-1.5 border border-black text-center">{rType === 'quotation' ? 'Lifecycle Status' : 'Receipt Status'}</th>
+                <th className="p-1.5 border border-black text-center">Receipt Status</th>
                 <th className="p-1.5 border border-black text-right pr-3">Gross Matrix Amount</th>
               </tr>
             </thead>
             <tbody>
               {reportRows.length === 0 ? (
-                <tr><td colSpan={rType === 'sale' ? 8 : 6} className="text-center py-10 font-bold italic border border-black text-gray-400 bg-gray-50/50">No rows fetched matching the isolated active report criteria token keys.</td></tr>
+                <tr>
+                  <td colSpan={rType === 'sale' ? 8 : 6} className="text-center py-10 font-bold italic border border-black text-gray-400 bg-gray-50/50">
+                    No rows fetched matching the isolated active report criteria token keys.
+                  </td>
+                </tr>
               ) : (
                 reportRows.map((row, idx) => {
-                  const displayDocPrefixId = rType === 'quotation' ? `QTN-${String(row.id).padStart(4, '0')}` : `INV-${row.id}`;
-                  const processingDateDisplay = row.quotation_date || row.sale_date || row.return_date || String(row.created_at || '').split('T');
-                  const activeStatusValue = row.status || row.receipt_status || 'Confirm';
+                  const displayDocPrefixId = `INV-${row.id}`;
+                  const processingDateDisplay = row.sale_date || row.return_date || String(row.created_at || '').split('T')[0];
+                  const activeStatusValue = row.receipt_status || 'Confirm';
 
                   return (
                     <tr key={row.id} className="border-b border-black hover:bg-gray-50 font-semibold font-mono text-xs">
@@ -178,7 +168,7 @@ const SaleReportPrint = () => {
                       {rType === 'sale' && <td className="p-1.5 border border-black font-sans text-purple-700 font-bold">{row.transport_name || 'Self Pick'}</td>}
                       <td className="p-1.5 border border-black text-center text-gray-500">{processingDateDisplay}</td>
                       <td className="p-2 border border-black text-center uppercase text-[10px] font-black">{activeStatusValue}</td>
-                      <td className="p-1.5 border border-black text-right pr-3 text-success font-black">Rs. {Number(row.total_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                      <td className="p-1.5 border border-black text-right pr-3 text-success font-black">Rs. {Number(row.total_amount || row.return_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                     </tr>
                   );
                 })
@@ -188,7 +178,7 @@ const SaleReportPrint = () => {
               <tr className="bg-gray-50 border-t border-black font-black font-mono text-xs">
                 <td colSpan={rType === 'sale' ? 7 : 5} className="p-2 border border-black text-right uppercase tracking-wider text-gray-500">Gross Sheet Aggregated Balanced Sum (PKR):</td>
                 <td className="p-2 border border-black text-right pr-3 text-success underline decoration-double text-sm">
-                  Rs. {reportRows.reduce((sum, r) => sum + (Number(r.total_amount) || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  Rs. {reportRows.reduce((sum, r) => sum + (Number(r.total_amount || r.return_amount || 0)), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                 </td>
               </tr>
             </tfoot>
