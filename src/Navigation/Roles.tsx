@@ -55,8 +55,6 @@ import PurchaseReport from '../pages/Reports/Purchase Report/PurchaseReports';
 import StockReport from '../pages/Reports/Stock Report/StockReport';
 import AccountReport from '../pages/Reports/Account Report/AccountReport';
 import SaleReportPrint from '../pages/Reports/Sales Report/SaleReportPrint';
-import SaleReturnReceiptAdd from '../pages/Sales/sales Return Receipt/SalesReturnReceiptAdd';
-import SaleReturnReceiptList from '../pages/Sales/sales Return Receipt/SaleReturnReceiptList';
 
 export const adminRoutes = [
   {
@@ -416,5 +414,5 @@ export const adminRoutes = [
     path: '/sales/sales-return-receipt/add',
     component: <SaleReturnReceiptAdd/>,
     hideFromSidebar: true
-  },
+  }
 ];
