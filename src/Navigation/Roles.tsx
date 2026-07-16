@@ -55,6 +55,8 @@ import PurchaseReport from '../pages/Reports/Purchase Report/PurchaseReports';
 import StockReport from '../pages/Reports/Stock Report/StockReport';
 import AccountReport from '../pages/Reports/Account Report/AccountReport';
 import SaleReportPrint from '../pages/Reports/Sales Report/SaleReportPrint';
+import SaleReturnReceiptList from '../pages/Sales/Sales Return Receipt/SaleReturnReceiptList';
+import SaleReturnReceiptAdd from '../pages/Sales/Sales Return Receipt/SalesReturnReceiptAdd';
 
 export const adminRoutes = [
   {
