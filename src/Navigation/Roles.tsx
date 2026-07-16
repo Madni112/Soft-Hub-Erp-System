@@ -416,5 +416,5 @@ export const adminRoutes = [
     path: '/sales/sales-return-receipt/add',
     component: <SaleReturnReceiptAdd/>,
     hideFromSidebar: true
-  }
+  },
 ];
