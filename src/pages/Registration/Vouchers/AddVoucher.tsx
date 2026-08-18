@@ -22,10 +22,38 @@ function AddVoucher() {
     const fetchVoucherMetadata = async () => {
       try {
         setMetadataLoading(true);
-        const { data: coaData } = await supabase.from('chart_of_accounts').select('account_code, account_title');
+        const { data: coaData } = await supabase
+          .from('chart_of_accounts')
+          .select('account_code, account_title')
+          .order('account_code', { ascending: true });
         const { data: smData } = await supabase.from('salesmen').select('id, name');
 
-        if (coaData) setAccountList(coaData);
+        const accountMap: Record<string, string> = {};
+
+        // Load only actual Chart of Accounts from database
+        if (coaData && Array.isArray(coaData)) {
+          coaData.forEach((a: any) => {
+            if (a.account_code) {
+              accountMap[String(a.account_code).trim()] = a.account_title || `Account ${a.account_code}`;
+            }
+          });
+        }
+
+        // If editing an existing historical voucher with an older code, preserve it in the list
+        if (editData?.items && Array.isArray(editData.items)) {
+          editData.items.forEach((it: any) => {
+            const c = String(it.accountCode || '').trim();
+            if (c && !accountMap[c]) {
+              accountMap[c] = `Legacy / Auto Code (${c})`;
+            }
+          });
+        }
+
+        const mergedList = Object.keys(accountMap)
+          .map(code => ({ account_code: code, account_title: accountMap[code] }))
+          .sort((a, b) => a.account_code.localeCompare(b.account_code));
+
+        setAccountList(mergedList);
         if (smData) setSalesmanList(smData);
       } catch (err: any) {
         toast.error('Failed to load chart codes or salesmen metadata');
@@ -176,9 +204,9 @@ function AddVoucher() {
                             <tr key={idx} className="hover:bg-slate-50/50">
                               <td className="p-2 border text-gray-400 font-medium bg-gray-50/30 dark:bg-meta-4/10">{idx + 1}</td>
                               <td className="p-2 border">
-                                <select name={`items.${idx}.accountCode`} onChange={handleChange} value={item.accountCode} className="w-full bg-transparent outline-none font-bold text-black dark:text-white dark:bg-boxdark">
+                                <select name={`items.${idx}.accountCode`} onChange={handleChange} value={String(item.accountCode || '')} className="w-full bg-transparent outline-none font-bold text-black dark:text-white dark:bg-boxdark">
                                   <option value="" className="text-gray-400 dark:bg-boxdark">-- Choose Account --</option>
-                                  {accountList.map(a => <option key={a.account_code} value={a.account_code} className="dark:bg-boxdark text-black dark:text-white">{`${a.account_code} - ${a.account_title}`}</option>)}
+                                  {accountList.map(a => <option key={a.account_code} value={String(a.account_code)} className="dark:bg-boxdark text-black dark:text-white">{`${a.account_code} - ${a.account_title}`}</option>)}
                                 </select>
                               </td>
                               <td className="p-2 border">

@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
-import Logo from '../../images/logo/authenFace.png';
+import IconDark from '../../images/logo/icon-dark.png';
+import IconLight from '../../images/logo/icon-light.png';
 import Spinner from '../../ui/Spinner';
 import { useAuth } from '../../Context/Auth';
+import DarkModeSwitcher from '../../components/Header/DarkModeSwitcher';
 
 const SignIn: React.FC = () => {
   const { login } = useAuth();
@@ -44,14 +46,31 @@ const SignIn: React.FC = () => {
   });
 
   return (
-    <div className="rounded-sm dark:border-strokedark dark:bg-boxdark h-full">
-      <div className="flex flex-wrap justify-center items-center">
-        {/* Right Side: Sign In Form */}
-        <div className="w-full border-stroke dark:border-strokedark xl:w-1/2 h-[100vh] flex items-center">
-          <div className="w-full p-4 sm:p-12.5 xl:p-17.5">
-            <h2 className="mb-9 text-2xl text-blue-900 flex gap-2 text-center items-center font-bold dark:text-white sm:text-title-xl2">
-              <img height={70} width={100} src={Logo} alt="Logo" />
-              Sign In to SoftHub
+    <div className="rounded-sm dark:border-strokedark dark:bg-boxdark h-screen flex flex-col">
+      {/* Navbar */}
+      <header className="w-full bg-white dark:bg-boxdark drop-shadow-1">
+        <div className="flex items-center justify-between px-4 py-4 md:px-6 2xl:px-11">
+          <div className="flex items-center gap-4">
+            <img className="hidden dark:block h-10 w-auto object-contain" src={IconDark} alt="NAM Logo" />
+            <img className="block dark:hidden h-10 w-auto object-contain" src={IconLight} alt="NAM Logo" />
+            <div className="flex items-center gap-1">
+              <h1 className="text-lg font-extrabold text-blue-600"> NOOR <span className="text-black dark:text-gray-300">MADNI</span></h1>
+              <span className="text-sm text-blue-600 font-bold"> IT <span className="text-black dark:text-gray-300">SOLUTIONS</span></span>
+              <span className="text-xs text-blue-600 font-bold">ERP</span>
+            </div>
+          </div>
+          <ul className="flex items-center gap-2 m-0 list-none">
+            <DarkModeSwitcher />
+          </ul>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <div className="flex flex-1 justify-center items-center bg-gray-50 dark:bg-boxdark-2">
+        <div className="w-full max-w-md border-stroke dark:border-strokedark flex items-center justify-center p-4">
+          <div className="w-full bg-white dark:bg-boxdark rounded-lg shadow-default dark:border-strokedark border-stroke border p-6 sm:p-10">
+            <h2 className="mb-9 text-2xl text-blue-900 text-center font-bold dark:text-white sm:text-title-xl2">
+              Sign In
             </h2>
 
             {/* Display Supabase Auth Errors */}
@@ -71,9 +90,8 @@ const SignIn: React.FC = () => {
                     id="email"
                     name="email"
                     placeholder="Enter your email"
-                    className={`w-full rounded-lg border bg-transparent py-4 pl-6 pr-10 text-black outline-none focus:border-primary dark:border-form-strokedark dark:bg-form-input dark:text-white ${
-                      formik.touched.email && formik.errors.email ? 'border-red-500' : 'border-stroke'
-                    }`}
+                    className={`w-full rounded-lg border bg-transparent py-4 pl-6 pr-10 text-black outline-none focus:border-primary dark:border-form-strokedark dark:bg-form-input dark:text-white ${formik.touched.email && formik.errors.email ? 'border-red-500' : 'border-stroke'
+                      }`}
                     onChange={formik.handleChange}
                     onBlur={formik.handleBlur}
                     value={formik.values.email}
@@ -93,9 +111,8 @@ const SignIn: React.FC = () => {
                     name="password"
                     type="password"
                     placeholder="8+ Characters"
-                    className={`w-full rounded-lg border bg-transparent py-4 pl-6 pr-10 text-black outline-none focus:border-primary dark:border-form-strokedark dark:bg-form-input dark:text-white ${
-                      formik.touched.password && formik.errors.password ? 'border-red-500' : 'border-stroke'
-                    }`}
+                    className={`w-full rounded-lg border bg-transparent py-4 pl-6 pr-10 text-black outline-none focus:border-primary dark:border-form-strokedark dark:bg-form-input dark:text-white ${formik.touched.password && formik.errors.password ? 'border-red-500' : 'border-stroke'
+                      }`}
                     onChange={formik.handleChange}
                     onBlur={formik.handleBlur}
                     value={formik.values.password}
@@ -110,9 +127,8 @@ const SignIn: React.FC = () => {
               <div className="mb-5">
                 <button
                   type="submit"
-                  className={`w-full cursor-pointer rounded-lg border p-4 text-white transition hover:bg-opacity-90 ${
-                    loading ? 'bg-primary/80 border-primary/80 cursor-not-allowed' : 'bg-primary border-primary'
-                  }`}
+                  className={`w-full cursor-pointer rounded-lg border p-4 text-white transition hover:bg-opacity-90 ${loading ? 'bg-primary/80 border-primary/80 cursor-not-allowed' : 'bg-primary border-primary'
+                    }`}
                   disabled={loading}
                 >
                   {loading ? <Spinner /> : 'Sign In'}

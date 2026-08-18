@@ -19,6 +19,7 @@ const AddMultiInvoiceReceipt = () => {
     const [fetchingInvoices, setFetchingInvoices] = useState(false);
     const [customers, setCustomers] = useState<any[]>([]);
     const [banks, setBanks] = useState<any[]>([]);
+    const [coaAccounts, setCoaAccounts] = useState<any[]>([]);
 
     const [formInitValues, setFormInitValues] = useState({
         receiptNo: `MRV-${Date.now().toString().slice(-6)}`,
@@ -37,8 +38,10 @@ const AddMultiInvoiceReceipt = () => {
                 setInitialLoading(true);
                 const { data: custData } = await supabase.from('customers').select('id, customerName');
                 const { data: bankData } = await supabase.from('banks').select('id, bankName, accountTitle');
+                const { data: coaData } = await supabase.from('chart_of_accounts').select('account_code, account_title, control_code, category_code');
                 if (custData) setCustomers(custData);
                 if (bankData) setBanks(bankData);
+                if (coaData) setCoaAccounts(coaData);
             } catch (err: any) {
                 toast.error('Failed to load metadata lookup layers: ' + err.message);
             } finally {
@@ -180,14 +183,40 @@ const AddMultiInvoiceReceipt = () => {
 
                         try {
                             setLoading(true);
-                            const assetAccountCode = values.paymentMethod === 'Cash' ? '1002001' : '1002002';
+                            // Dynamically resolve COA account codes from live Supabase records
+                            const cashCoa = coaAccounts.find((c: any) =>
+                                String(c.control_code || '').toLowerCase().includes('cash') ||
+                                String(c.account_title || '').toLowerCase().includes('cash')
+                            );
+
+                            const selectedBankObj = banks.find((b: any) => String(b.id) === String(values.selectedBankId));
+                            const bankCoa = coaAccounts.find((c: any) =>
+                                (selectedBankObj && (
+                                    String(c.account_title || '').toLowerCase().includes(String(selectedBankObj.bankName || '').toLowerCase()) ||
+                                    String(c.account_title || '').toLowerCase().includes(String(selectedBankObj.accountTitle || '').toLowerCase())
+                                )) ||
+                                String(c.control_code || '').toLowerCase().includes('bank')
+                            );
+
+                            const recCoa = coaAccounts.find((c: any) =>
+                                String(c.control_code || '').toLowerCase().includes('debtor') ||
+                                String(c.control_code || '').toLowerCase().includes('receivable') ||
+                                String(c.account_title || '').toLowerCase().includes('receivable')
+                            );
+
+                            const assetAccountCode = values.paymentMethod === 'Cash'
+                                ? (cashCoa ? String(cashCoa.account_code) : '1010')
+                                : (bankCoa ? String(bankCoa.account_code) : '6789');
+
+                            const customerAccountCode = recCoa ? String(recCoa.account_code) : (cashCoa ? String(cashCoa.account_code) : '1010');
+
                             const activeRowsToClear = values.allocations.filter((a: any) => Number(a.amountToAllocate) > 0);
 
                             for (const row of activeRowsToClear) {
                                 const rowAmount = Number(row.amountToAllocate);
                                 const balancedJournalItems = [
                                     { accountCode: assetAccountCode, description: `Multi-Invoice Allocation Vch-${values.receiptNo} split against INV-${row.invoiceId}`, debit: rowAmount, credit: 0 },
-                                    { accountCode: '1001001', description: `Multi-Invoice Allocation Vch-${values.receiptNo} split debt clear against INV-${row.invoiceId}`, debit: 0, credit: rowAmount }
+                                    { accountCode: customerAccountCode, description: `Multi-Invoice Allocation Vch-${values.receiptNo} split debt clear against INV-${row.invoiceId}`, debit: 0, credit: rowAmount }
                                 ];
 
                                 const compositeNarration = `Customer: ${values.customerName} | Bulk Voucher: ${values.receiptNo} | Settling target segment of INV-${row.invoiceId} | Note: ${values.notes.trim()}`.trim();

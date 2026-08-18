@@ -1,10 +1,15 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import SidebarLinkGroup from './SidebarLinkGroup';
-import { AiOutlineUp, AiOutlineDown, AiOutlineRight } from 'react-icons/ai';
+import { AiOutlineUp, AiOutlineDown, AiOutlineRight, AiOutlineArrowLeft } from 'react-icons/ai';
 import { LuLogOut } from 'react-icons/lu';
 import { useModal } from '../../Context/Modal';
 import { useAuth } from '../../Context/Auth';
+import LogoDark from '../../images/logo/logo-dark.png';
+import LogoLight from '../../images/logo/logo-light.png';
+import IconDark from '../../images/logo/icon-dark.png';
+import IconLight from '../../images/logo/icon-light.png';
+import { Weight } from 'lucide-react';
 
 interface SidebarProps {
   sidebarOpen: boolean;
@@ -301,18 +306,45 @@ const Sidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
 
       <aside ref={sidebar} className={`fixed left-0 top-0 z-99999 flex h-screen flex-col bg-white duration-300 ease-in-out dark:bg-boxdark shadow-2xl ${isMobile ? 'block' : 'min-[751px]:sticky min-[751px]:top-0'} ${sidebarOpen ? 'w-72.5 translate-x-0 border-r border-stroke dark:border-strokedark visible' : 'w-0 -translate-x-full min-[751px]:w-18 min-[751px]:translate-x-0 min-[751px]:border-r min-[751px]:border-stroke min-[751px]:dark:border-strokedark max-[750px]:invisible'}`} >
 
-        <div className={`flex items-center gap-2 py-6 border-b border-stroke dark:border-strokedark min-h-[76px] duration-300 ${sidebarOpen ? 'px-6' : 'px-0 min-[751px]:px-2 justify-center'}`} >
-          <NavLink className="flex items-center gap-2 w-full" to="/">
-            {(sidebarOpen || isMobile) ? (
-              <p className="text-xl font-bold text-primary dark:text-white truncate block w-full text-left tracking-tight">
-                Softhub-PK ERP
-                <br />
-                Software
-              </p>
-            ) : (
-              <p className="text-xl font-bold text-primary dark:text-blue-400 text-center w-full min-[751px]:block hidden">S</p>
-            )}
-          </NavLink>
+        <div className={`flex items-center justify-between gap-2 py-6 border-b border-stroke dark:border-strokedark min-h-[76px] duration-300 ${sidebarOpen ? 'px-6' : 'px-0 min-[751px]:px-2 justify-center'}`} >
+          {(sidebarOpen || isMobile) ? (
+            <div className="flex items-center justify-between w-full">
+              <NavLink className="flex items-center gap-2" to="/">
+                <img src={IconDark} alt="NAM Icon" className="hidden dark:block h-8 w-auto object-contain shrink-0" />
+                <img src={IconLight} alt="NAM Icon" className="block dark:hidden h-8 w-auto object-contain shrink-0" />
+                <p className="text-primary dark:text-white truncate block text-left tracking-tight leading-tight margin-right-4">
+                  <span className="text-lg font-extrabold text-blue-600">NOOR </span>
+                  <span className="text-lg font-extrabold text-black dark:text-gray-300">MADNI</span>
+                  <br />
+                  <span className="text-sm text-blue-600 font-bold">IT</span>
+                  <span className="text-sm text-black dark:text-gray-300 font-bold"> SOLUTIONS </span> <br></br>
+                  <span className="text-xs text-blue-600 font-bold">ERP</span>
+                </p>
+              </NavLink>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSidebarOpen(false);
+                }}
+                className="p-2 hover:bg-gray-50 dark:hover:bg-meta-4/50 rounded-full text-gray-800 dark:text-gray-100 transition-colors"
+                title="Close Sidebar"
+              >
+                <AiOutlineArrowLeft size={20} className="stroke-current stroke-[40px]" />
+              </button>
+            </div>
+          ) : (
+            <div
+              className="w-full flex justify-center cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSidebarOpen(true);
+              }}
+              title="Open Sidebar"
+            >
+              <img src={IconDark} alt="NAM Icon" className="hidden dark:block h-7 w-auto object-contain mx-auto" />
+              <img src={IconLight} alt="NAM Icon" className="block dark:hidden h-7 w-auto object-contain mx-auto" />
+            </div>
+          )}
         </div>
 
         <div className="no-scrollbar flex flex-col overflow-y-auto overflow-x-hidden flex-1">

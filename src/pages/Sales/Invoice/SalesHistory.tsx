@@ -3,7 +3,7 @@ import { supabase } from '../../../Context/supabaseClient';
 import { toast } from 'react-hot-toast';
 import Spinner from '../../../ui/Spinner';
 import { useNavigate } from 'react-router-dom';
-import { FiRotateCcw, FiEdit, FiSend, FiTrash2 } from 'react-icons/fi';
+import { FiRotateCcw, FiEdit, FiSend, FiTrash2, FiPrinter } from 'react-icons/fi';
 import { buildFBRInvoicePayload, syncWithFBR } from '../../../service/fbrService';
 
 const SalesHistory = () => {
@@ -321,6 +321,17 @@ const SalesHistory = () => {
                       className="flex items-center gap-2.5 w-full px-4 py-2 hover:bg-gray-100 dark:hover:bg-meta-4 transition border-b border-stroke dark:border-strokedark text-success cursor-pointer font-bold disabled:opacity-50"
                     >
                       <FiSend size={13} /> {syncingId === selectedInvoice.id ? 'Posting...' : 'Post to FBR'}
+                    </button>
+                  </li>
+                )}
+                {isAlreadyPostedToFBR && (
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => { setOpenActionId(null); navigate(`/sales/invoice/print/${selectedInvoice.id}`); }}
+                      className="flex items-center gap-2.5 w-full px-4 py-2 hover:bg-gray-100 dark:hover:bg-meta-4 transition border-b border-stroke dark:border-strokedark text-primary cursor-pointer font-bold"
+                    >
+                      <FiPrinter size={13} /> Print Invoice
                     </button>
                   </li>
                 )}

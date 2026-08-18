@@ -13,6 +13,7 @@ function AddInvoiceReceipt() {
 
   const [invoiceOptions, setInvoiceOptions] = useState<any[]>([]);
   const [bankAccounts, setBankAccounts] = useState<any[]>([]);
+  const [coaAccounts, setCoaAccounts] = useState<any[]>([]);
   const [invoiceTotal, setInvoiceTotal] = useState<number>(0);
   const [remainingBalance, setRemainingBalance] = useState<number>(0);
   const [totalReturnedCredit, setTotalReturnedCredit] = useState<number>(0);
@@ -34,8 +35,10 @@ function AddInvoiceReceipt() {
         const { data: returnRecords } = await supabase.from('sales_returns').select('original_invoice_no, total_amount');
         const { data: pastReceipts } = await supabase.from('financial_vouchers').select('id, original_invoice_no, total_amount').or('voucher_type.eq.Cash Receipt Voucher,voucher_type.eq.Bank Receipt Voucher');
         const { data: bankData } = await supabase.from('banks').select('id, bankName, accountTitle, accountNumber');
+        const { data: coaData } = await supabase.from('chart_of_accounts').select('account_code, account_title, control_code, category_code');
 
         if (bankData) setBankAccounts(bankData);
+        if (coaData) setCoaAccounts(coaData);
 
         if (invData) {
           const currentEditId = editData?.id || null;
@@ -229,12 +232,36 @@ function AddInvoiceReceipt() {
 
                 try {
                   setLoading(true);
-                  const cashAmt = enteredAmount;
-                  const assetAccountCode = values.paymentTerm === 'By Cash' ? '1002001' : '1002002';
+                  // Dynamically resolve COA account codes from live Supabase records
+                  const cashCoa = coaAccounts.find((c: any) =>
+                    String(c.control_code || '').toLowerCase().includes('cash') ||
+                    String(c.account_title || '').toLowerCase().includes('cash')
+                  );
+
+                  const selectedBankObj = bankAccounts.find((b: any) => String(b.id) === String(values.selectedBankId));
+                  const bankCoa = coaAccounts.find((c: any) =>
+                    (selectedBankObj && (
+                      String(c.account_title || '').toLowerCase().includes(String(selectedBankObj.bankName || '').toLowerCase()) ||
+                      String(c.account_title || '').toLowerCase().includes(String(selectedBankObj.accountTitle || '').toLowerCase())
+                    )) ||
+                    String(c.control_code || '').toLowerCase().includes('bank')
+                  );
+
+                  const recCoa = coaAccounts.find((c: any) =>
+                    String(c.control_code || '').toLowerCase().includes('debtor') ||
+                    String(c.control_code || '').toLowerCase().includes('receivable') ||
+                    String(c.account_title || '').toLowerCase().includes('receivable')
+                  );
+
+                  const assetAccountCode = values.paymentTerm === 'By Cash'
+                    ? (cashCoa ? String(cashCoa.account_code) : '1010')
+                    : (bankCoa ? String(bankCoa.account_code) : (selectedBankObj?.accountNumber || '6789'));
+
+                  const customerAccountCode = recCoa ? String(recCoa.account_code) : (cashCoa ? String(cashCoa.account_code) : '1010');
 
                   const balancedJournalItems = [
                     { accountCode: assetAccountCode, salesman: salesman, description: `Received via INV-${selectedInvoiceId}`, debit: cashAmt, credit: 0 },
-                    { accountCode: '1001001', salesman: salesman, description: `Debt cleared against INV-${selectedInvoiceId}`, debit: 0, credit: cashAmt }
+                    { accountCode: customerAccountCode, salesman: salesman, description: `Debt cleared against INV-${selectedInvoiceId}`, debit: 0, credit: cashAmt }
                   ];
 
                   const bankTrackingString = values.paymentTerm === 'By Bank' ? ` | Bank ID: ${values.selectedBankId}` : '';
